@@ -48,11 +48,11 @@ let clean_groups =
     "abstract datatypes"; "proof assistant"; "depth first search";
     "unification"; "total in Prolog"; "Prolog fork"; "yacc"; "montague";
     "N Queens"; "search"; "L interpreter"; "quantifier machine"; "secd";
-    "Prolog interpreter";
+    "Prolog interpreter"; "spreadsheet";
   ]
 
 (** Expected cumulative passing count across [clean_groups] (baseline 2026-06). *)
-let expected_pass = 117
+let expected_pass = 119
 
 let eval_pipeline src =
   KLApp

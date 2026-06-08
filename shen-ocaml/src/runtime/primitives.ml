@@ -137,7 +137,14 @@ let pr_absvector = make_closure 1 (function
   | _ -> Error "absvector: integer expected"
 )
 
+(* [str] maps an *atom* to its print string. It must signal an error on non-atoms
+   (closures, streams) rather than returning "<closure>": the kernel's [symbol?]
+   (sys.kl) falls through to [(trap-error (shen.analyse-symbol? (str V)) ... false)],
+   so a lenient [str] makes [(symbol? <closure>)] true — which broke [fixed-value?]
+   in the spreadsheet kernel test (lambda cells were kept instead of applied). *)
 let pr_str = make_closure 1 (function
+  | [(Closure _ | Stream _ | Error _) as v] ->
+      raise (User_error ("str: cannot convert to string: " ^ to_string v))
   | [v] -> Str (to_string v)
   | _ -> Error "str: one argument expected"
 )

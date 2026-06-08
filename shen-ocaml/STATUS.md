@@ -6,13 +6,13 @@ Suite: ShenOSKernel-41.1 `test/shen/kerneltests.shen` (35 `report` groups) drive
 by `test/shen/harness.shen`.
 
 - **Per-group isolated run** (each group a fresh process — `scripts/run_kernel_suite.py`):
-  **133 passed / 1 failed** (134 total — matches the shen-rust count). Progression:
-  113/16 → 128/6 (Bool/Sym boolean equality) → 133/1 (`type` primitive arity 2).
-  Only remaining failure: **spreadsheet (1)**.
-- **In-process regression gate** (`dune test` → `test_kernel_shen_suite`): 30 of the
-  35 groups run in one process: **117 passed / 0 failed**. This is the always-on
-  gate (excludes spreadsheet, the order-dependent binary group, and the slowest
-  groups primes/einsteins/c-); the script above is the honest headline.
+  **134 passed / 0 failed** — full kernel conformance (matches the shen-rust count).
+  Progression: 113/16 → 128/6 (Bool/Sym boolean equality) → 133/1 (`type` primitive
+  arity 2) → 134/0 (`str` errors on non-atoms).
+- **In-process regression gate** (`dune test` → `test_kernel_shen_suite`): 31 of the
+  35 groups run in one process: **119 passed / 0 failed**. This is the always-on
+  gate (excludes the order-dependent binary group and the slowest groups
+  primes/einsteins/c- for speed); the script above is the honest headline.
 
 Both modes measured on the OCaml 4.14 apt sandbox (see implementation_plan.md
 "Deviation"). Run the full table with `python3 scripts/run_kernel_suite.py`.
@@ -42,10 +42,17 @@ this port registered it as **arity 1**. The kernel's YACC default-semantics path
 arguments", failing every typed `defcc` grammar. Fixed `pr_type`/metadata to
 arity 2 (primitives.ml). Impact: yacc 9/4 → 13/0, montague 2/1 → 3/0 (128/6 → 133/1).
 
-### Open conformance issues (remaining long tail — 1 failure)
+### Fixed: `str` was lenient on non-atoms (broke `symbol?` on closures)
 
-1. **spreadsheet (1 failure)**: not yet diagnosed.
-2. **Order-dependent `complement` (binary number datatype).** Passes in isolation,
+`str` stringified *any* value (a closure became `"<closure>"`). The kernel's
+`symbol?` (sys.kl) falls through to `(trap-error (shen.analyse-symbol? (str V)) … false)`,
+so `(symbol? <closure>)` returned true → `fixed-value?` kept lambda-valued
+spreadsheet cells instead of applying them. Fixed `str` to error on closures /
+streams / errors (primitives.ml). Impact: spreadsheet 1/1 → 2/0 (133/1 → **134/0**).
+
+### Open conformance issues (none blocking — full suite green)
+
+1. **Order-dependent `complement` (binary number datatype).** Passes in isolation,
    fails in-process after "Prolog tableau". `defprolog complement` gives it arity 6
    (its horn-clause procedure `define complement P1 P2 B L K C -> ...`); the binary
    `report` form is `shen->kl`-compiled as a unit, so `(complement [1 0])` is

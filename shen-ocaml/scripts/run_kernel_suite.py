@@ -30,10 +30,10 @@ KERNEL = os.path.join(ROOT, "kernel")
 BIN = os.path.join(ROOT, "_build", "default", "bin", "main.exe")
 
 # Measured baseline (per-process isolated run, OCaml 4.14 sandbox, 2026-06).
-# 113/16 -> 128/6 (Bool/Sym boolean equality) -> 133/1 (type primitive arity 2).
-# Remaining failure: spreadsheet (1).
-BASELINE_PASS = 133
-BASELINE_FAIL = 1
+# 113/16 -> 128/6 (Bool/Sym boolean equality) -> 133/1 (type primitive arity 2)
+# -> 134/0 (str errors on non-atoms, fixing symbol?). Full kernel conformance.
+BASELINE_PASS = 134
+BASELINE_FAIL = 0
 
 
 def split_forms(text):

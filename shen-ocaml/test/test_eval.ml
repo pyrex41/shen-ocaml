@@ -74,6 +74,11 @@ let run () =
   assert (eval_one "(boolean? (intern \"true\"))" = Bool true);
   assert (eval_one "(boolean? (intern \"false\"))" = Bool true);
   assert (eval_one "(if (intern \"true\") 1 2)" = Int 1);
+  (* str maps atoms to strings but must error on non-atoms (closures/streams),
+     else the kernel's symbol? wrongly classifies a closure as a symbol. *)
+  assert (eval_one "(str foo)" = Str "foo");
+  assert (eval_one "(str 42)" = Str "42");
+  assert (match eval_one "(str (lambda X X))" with Error _ -> true | _ -> false);
   assert (eval_one "(type 42 number)" = Int 42);
   assert (eval_one "(eval-kl (cons + (cons 1 (cons 2 ()))))" = Int 3);
   assert (
