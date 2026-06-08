@@ -99,11 +99,45 @@ Internal library **`shen_guard_types`** in `src/generated/dune` compiles `guard_
 - [x] Verify Gate 2 (build) now catches guard type regressions
 - [x] Document the enforcement chain in ARCHITECTURE.md
 
-### Task 5: Run kernel test suite
+### Task 5: Run kernel test suite ✅ — FULL CONFORMANCE (134/0)
+
+**Status (2026-06-08): COMPLETE.** ShenOSKernel-41.1 `kerneltests.shen` runs at
+**134 passed / 0 failed** (per-group isolated run, `scripts/run_kernel_suite.py`),
+matching the shen-rust test count with zero failures. A bounded in-process
+regression gate (`dune test` → `test_kernel_shen_suite`, 31 groups, 119/0) is
+always-on. Both committed.
+
+Five root-cause fixes got there (each its own commit, each with a regression test):
+1. **`open` of a missing file must unwind** (was returning an `Error` value the
+   kernel reader's `read-byte`-until-`-1` loop spun on forever). Fixed the
+   cwd-dependent "load hang".
+2. **`Value.equal` must equate `Bool b` with the `true`/`false` symbols** (+ `is_true`).
+   `true`/`false` evaluate to a `Bool` variant but are *symbols* as data; the type
+   checker's literal rule `(boolean? <term>)` (via kernel `boolean?` = `(= true V)`)
+   failed on every `... --> boolean` definition. 113/16 → 128/6 (N Queens, search,
+   L interpreter, quantifier machine, secd, Prolog interpreter).
+3. **`type` primitive is arity 2** (`(type Expr Type) -> Expr`), was arity 1; the
+   YACC default-semantics path `(type Out ResultType)` over-applied it. 128/6 → 133/1
+   (yacc, montague).
+4. **`str` errors on non-atoms** (closures/streams), was lenient; kernel `symbol?`
+   falls through to `(shen.analyse-symbol? (str V))`, so `(symbol? <closure>)` was
+   true and `fixed-value?` kept lambda cells. 133/1 → **134/0** (spreadsheet).
+
+Tooling stood up: `scripts/run_kernel_suite.py` (full per-group runner, baseline
+gate) and `test/test_kernel_shen_suite.ml` (in-process regression gate).
+
+**Remaining Phase A work (not yet done):**
+- LC-3 integration oracle: vendor `lc3.shen`/`asmhelp.shen`/`lc3asm.shen` under
+  `tests/integration/`, assert byte-identical machine code + `prolog?` answers.
+- TCO regression test (1M-deep direct and mutual recursion).
+- Number-tower decision (63-bit native ints vs zarith) — audit suite for bignum
+  needs; document.
+- Bug noted while debugging: the **REPL `define` path does not type-check** under
+  `(tc +)` (an ill-typed define is accepted at the REPL though `load` rejects it).
+
+#### Historical sub-tasks (all subsumed by the above)
 
 Test files are already in `test/shen/` (copied from ShenOSKernel-41.1). Harness is already patched (no `y-or-n?`).
-
-**IMPORTANT**: Do ONE sub-task per iteration. Do NOT try to run all tests AND fix all bugs in one pass. Start with 5a first.
 
 #### Task 5a: Fix `(load ...)` — the Shen reader hangs
 
