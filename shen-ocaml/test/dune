@@ -51,6 +51,18 @@
  (modules test_types_kl_aot)
  (libraries shen_aot_kernel))
 
+; Phase B: AOT-compiled fixture must be bit-identical to the interpreter.
+(test
+ (name test_aot_fixture)
+ (modules test_aot_fixture)
+ (libraries shen shen_aot_fixture)
+ (deps %{workspace_root}/test/fixtures/aot_fixture.kl)
+ (action
+  (setenv
+   AOT_FIXTURE
+   %{workspace_root}/test/fixtures/aot_fixture.kl
+   (run %{test}))))
+
 ; Phase A conformance regression gate (bounded, in-process, clean subset).
 ; Full per-group conformance lives in scripts/run_kernel_suite.py (see STATUS.md).
 (test

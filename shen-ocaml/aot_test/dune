@@ -1,0 +1,19 @@
+; Phase B: compile a fixture KL file to native OCaml and build it into a library,
+; so tests can verify the AOT path is bit-identical to the interpreter.
+
+(rule
+ (target aot_fixture.ml)
+ (deps
+  %{exe:../tools/gen_aot.exe}
+  %{workspace_root}/test/fixtures/aot_fixture.kl)
+ (action
+  (run %{exe:../tools/gen_aot.exe}
+   %{workspace_root}/test/fixtures/aot_fixture.kl
+   %{target})))
+
+(library
+ (name shen_aot_fixture)
+ (modules aot_fixture)
+ (flags
+  (:standard -w -a))
+ (libraries shen))

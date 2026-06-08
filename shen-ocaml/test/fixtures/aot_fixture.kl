@@ -1,0 +1,23 @@
+(defun fixt-fact (N) (if (= N 0) 1 (* N (fixt-fact (- N 1)))))
+
+(defun fixt-sumto (Acc N) (if (= N 0) Acc (fixt-sumto (+ Acc N) (- N 1))))
+
+(defun fixt-even? (N) (if (= N 0) true (fixt-odd? (- N 1))))
+
+(defun fixt-odd? (N) (if (= N 0) false (fixt-even? (- N 1))))
+
+(defun fixt-let (X) (let Y (* X X) (+ Y 1)))
+
+(defun fixt-and (A B) (and (> A 0) (> B 0)))
+
+(defun fixt-or (A B) (or (> A 0) (> B 0)))
+
+(defun fixt-cond (N)
+  (cond ((= N 0) zero) ((> N 0) positive) (true negative)))
+
+(defun fixt-apply-lambda (X) ((lambda Y (+ X Y)) 10))
+
+(defun fixt-trap (X)
+  (trap-error (simple-error "boom") (lambda E X)))
+
+(defun fixt-str (X) (cn "n=" (str X)))

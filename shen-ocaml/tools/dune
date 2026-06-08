@@ -7,3 +7,8 @@
  (name gen_all_kernel_forms)
  (modules gen_all_kernel_forms)
  (libraries shen))
+
+(executable
+ (name gen_aot)
+ (modules gen_aot)
+ (libraries shen))
