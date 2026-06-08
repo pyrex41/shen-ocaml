@@ -6,8 +6,9 @@ Suite: ShenOSKernel-41.1 `test/shen/kerneltests.shen` (35 `report` groups) drive
 by `test/shen/harness.shen`.
 
 - **Per-group isolated run** (each group a fresh process — `scripts/run_kernel_suite.py`):
-  **113 passed / 16 failed**, plus **N Queens** which hangs (see below). 129 tests
-  account for + N Queens ≈ the ~134 shen-rust runs.
+  **128 passed / 6 failed** (134 total — matches the shen-rust count). Up from
+  113/16 after the Bool/Sym boolean-equality fix below; N Queens now passes (was a
+  hang). Remaining failures: **yacc (4)**, **spreadsheet (1)**, **montague (1)**.
 - **In-process regression gate** (`dune test` → `test_kernel_shen_suite`): the
   order-independent clean subset (22 groups) runs in one process: **76 passed / 0
   failed**. This is the always-on gate; the script above is the honest headline.
@@ -15,27 +16,43 @@ by `test/shen/harness.shen`.
 Both modes measured on the OCaml 4.14 apt sandbox (see implementation_plan.md
 "Deviation"). Run the full table with `python3 scripts/run_kernel_suite.py`.
 
-### Open conformance issues (the long tail)
+### Fixed: type-checker rejected all well-typed `(tc +) ... --> boolean` code
 
-1. **Type-checker rejects well-typed `(tc +)` code.** `(load "n queens.shen")`
-   under `(tc +)` fails: *"type error in rule 1 of n-queens.all_Ns?"* on the
-   plainly well-typed `all_Ns? : number --> (list number) --> boolean`. After the
-   failed load, `(n-queens 5)` hangs (half-defined functions). The same family of
-   `(tc +)` groups account for most failures: **yacc (4)**, **L interpreter (3)**,
-   **secd (3)**, **quantifier machine (2)**, **montague (1)**, **search (1)**,
-   **spreadsheet (1)**, **Prolog interpreter (1)**. Likely a single bug in how the
-   sequent prover (sequent.kl / t-star.kl) executes on the interpreter. Needs a
-   shen-cl reference to diff intermediate proof state (unavailable in this
-   sandbox — network blocked). **Not yet fixed; highest-value next target.**
+The biggest conformance bug. `(load "n queens.shen")` under `(tc +)` failed with
+*"type error in rule 1 of n-queens.all_Ns?"* on a plainly well-typed
+`all_Ns? : number --> (list number) --> boolean`, and the same root cause sank
+N Queens, search, L interpreter, quantifier machine, secd, and Prolog interpreter
+(+15 tests). **Root cause:** the type checker's base-literal rule `shen.primitive`
+(t-star.kl) types a literal by calling `(boolean? <term>)`, `(number? <term>)`, …
+on the term *as data*. The kernel's `boolean?` (sys.kl) is `(= true V)`/`(= false V)`.
+But `true`/`false` evaluate to this port's `Bool` variant, while an unevaluated
+literal in a `define` body is the *symbol* `true`/`false` — and `Value.equal` did
+not equate `Bool b` with `Sym "true"/"false"`. So `true : boolean` was unprovable;
+the term fell through to the `symbol?` branch and clashed with the declared
+`boolean`. **Fix:** `Value.equal` now equates `Bool b` with the `true`/`false`
+symbols, and `is_true` accepts the `true` symbol (value.ml). Regression covered by
+the conformance suite (128/6) and `test_eval` boolean cases.
+
+### Open conformance issues (remaining long tail — 6 failures)
+
+1. **yacc (4 failures)** and **spreadsheet (1)**, **montague (1)**: not yet
+   diagnosed. yacc is the largest remaining cluster — next target.
 2. **Order-dependent `complement` (binary number datatype).** Passes in isolation,
    fails in-process after "Prolog tableau". `defprolog complement` gives it arity 6
    (its horn-clause procedure `define complement P1 P2 B L K C -> ...`); the binary
    `report` form is `shen->kl`-compiled as a unit, so `(complement [1 0])` is
    compiled to a currying lambda (6 > 1 args) *before* the in-group
    `(load "binary.shen")` redefines complement to arity 1 — so it returns a closure.
-   An eval compile-vs-load timing interaction. Excluded from the in-process gate;
-   tracked here.
-3. **N Queens hang** is a downstream symptom of (1), not an independent bug.
+   An eval compile-vs-load timing interaction. Excluded from the in-process gate.
+3. **Monolithic single-process run is slow.** Running all 35 groups in one process
+   times out (>200s) even though every group is fast in isolation (~50s total) and
+   none hang — cross-group state accumulation. A perf/state-leak item, not a
+   correctness failure; the per-group script is the conformance oracle.
+
+Also noted while debugging: the **REPL `define` path does not type-check** under
+`(tc +)` (an ill-typed `(define bad {number --> boolean} X -> X)` is accepted at
+the REPL though `load` correctly rejects it). Tracked for a later fix; the suite
+loads via `load`, which does type-check.
 
 ## What Works
 

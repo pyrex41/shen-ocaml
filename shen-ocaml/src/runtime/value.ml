@@ -53,8 +53,13 @@ let rec to_string = function
   | Stream _ -> "<stream>"
   | Error s -> "Error: " ^ s
 
+(* In Shen, [true]/[false] are symbols; this port also has a [Bool] variant that
+   evaluating [KLSym "true"] produces. Data that is never evaluated (a [define]
+   body the type checker inspects, any quoted form) keeps the *symbol* form, so
+   the two representations must be interchangeable for truth and equality. *)
 let is_true = function
   | Bool true -> true
+  | Sym "true" -> true
   | _ -> false
 
 let is_symbol = function
@@ -70,6 +75,11 @@ let rec equal v1 v2 =
     | (Str s1, Str s2) -> s1 = s2
     | (Sym s1, Sym s2) -> s1 = s2
     | (Bool b1, Bool b2) -> b1 = b2
+    (* [Bool b] and the symbol [true]/[false] are the same value (see [is_true]).
+       The kernel's [boolean?] is [(= true V)], so this equation is what lets the
+       type checker recognise literal [true]/[false] as [boolean]. *)
+    | (Bool b, Sym s) | (Sym s, Bool b) ->
+        (b && s = "true") || ((not b) && s = "false")
     | (Nil, Nil) -> true
     | (Cons (h1, t1), Cons (h2, t2)) -> equal h1 h2 && equal t1 t2
     | (Vec v1, Vec v2) ->

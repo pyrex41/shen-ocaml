@@ -7,12 +7,12 @@
     regression gate: it runs the subset of groups that currently pass cleanly and
     quickly, then asserts the cumulative pass/fail tally has not regressed.
 
-    Why a subset and not the whole file: a handful of [(tc +)] typed groups (N
-    Queens, c-, montague, secd, L interpreter, quantifier machine) currently fail
-    or hang on a type-checker conformance bug (e.g. "type error in rule 1 of
-    n-queens.all_Ns?" on a well-typed definition). Running those in-process can
-    hang, so they are excluded here and tracked as known failures in STATUS.md
-    until the checker bug is fixed.
+    Why a subset and not the whole file: a few groups still fail (yacc, spreadsheet,
+    montague) and "binary number datatype" is order-dependent in-process (see
+    STATUS.md); excluding them keeps this gate a clean, fast regression check. The
+    full headline number (128/6) comes from scripts/run_kernel_suite.py. (A
+    monolithic single-process run of all groups is also currently slow — another
+    reason this gate uses a curated fast subset.)
 
     Mechanism: the harness keeps its [*passed*]/[*failed*] counters under the
     package-prefixed symbol [test-harness.*passed*], so we don't read them

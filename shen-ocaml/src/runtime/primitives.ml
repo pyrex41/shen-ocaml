@@ -228,8 +228,13 @@ let pr_symbolp = make_closure 1 (function
   | _ -> Bool false
 )
 
+(* Accepts both the [Bool] representation and the *symbols* [true]/[false] (the form
+   literals take as data). The kernel's own [boolean?] (sys.kl) is [(= true V)]/[(= false V)],
+   so the decisive fix is making [Value.equal] equate [Bool b] with [Sym "true"/"false"]
+   — see value.ml. This primitive is kept consistent for the pre-boot / direct-call path. *)
 let pr_booleanp = make_closure 1 (function
   | [Bool _] -> Bool true
+  | [Sym ("true" | "false")] -> Bool true
   | _ -> Bool false
 )
 

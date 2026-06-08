@@ -63,6 +63,17 @@ let run () =
   assert (eval_one "(string->n \"B\")" = Int 66);
   assert (eval_one "(symbol? foo)" = Bool true);
   assert (eval_one "(boolean? true)" = Bool true);
+  (* Bool/Sym(true,false) interchangeability — the fix that unblocked the type
+     checker (literal true/false in a define body are symbols, not Bool). *)
+  assert (equal (Bool true) (Sym "true"));
+  assert (equal (Sym "false") (Bool false));
+  assert (not (equal (Bool true) (Sym "false")));
+  assert (is_true (Sym "true"));
+  assert (eval_one "(= true (intern \"true\"))" = Bool true);
+  assert (eval_one "(= false (intern \"false\"))" = Bool true);
+  assert (eval_one "(boolean? (intern \"true\"))" = Bool true);
+  assert (eval_one "(boolean? (intern \"false\"))" = Bool true);
+  assert (eval_one "(if (intern \"true\") 1 2)" = Int 1);
   assert (eval_one "(type 42)" = Int 42);
   assert (eval_one "(eval-kl (cons + (cons 1 (cons 2 ()))))" = Int 3);
   assert (
