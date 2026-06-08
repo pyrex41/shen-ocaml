@@ -17,8 +17,15 @@ let set_global name v =
 let get_fn name =
   try Some (Hashtbl.find fn_table name) with Not_found -> None
 
+(** Called by [set_fn] *after* the table is updated, with the (re)defined name.
+    Phase C uses it to invalidate type-specialized call webs when any member is
+    redefined at runtime (e.g. via [eval-kl]). Installed after initial setup so
+    that registering the specialized wrappers themselves does not trip it. *)
+let redefine_hook : (string -> unit) ref = ref (fun _ -> ())
+
 let set_fn name v =
-  Hashtbl.replace fn_table name v
+  Hashtbl.replace fn_table name v;
+  !redefine_hook name
 
 (** After [set_fn], mirror [shen.execute-store-arity] and [shen.set-lambda-form-entry]
     so code from [read-from-string] (which wraps calls as [(fn name) ...]) finds

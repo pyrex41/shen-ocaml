@@ -69,6 +69,24 @@
  (modules test_aot_kernel_boot)
  (libraries shen shen_aot_kernel_compiled))
 
+; Phase C: type-directed specialization soundness (bit-identical, fallback,
+; redefinition invalidation).
+(test
+ (name test_specialize)
+ (modules test_specialize)
+ (libraries shen shen_typed_numeric)
+ (deps
+  (source_tree %{workspace_root}/kernel)
+  %{workspace_root}/bench/typed_vs_erased/typed_numeric.shen)
+ (action
+  (setenv
+   SHEN_KERNEL_DIR
+   %{workspace_root}/kernel
+   (setenv
+    SPEC_FIXTURE
+    %{workspace_root}/bench/typed_vs_erased/typed_numeric.shen
+    (run %{test})))))
+
 ; Phase A conformance regression gate (bounded, in-process, clean subset).
 ; Full per-group conformance lives in scripts/run_kernel_suite.py (see STATUS.md).
 (test

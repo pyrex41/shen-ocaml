@@ -40,6 +40,39 @@ for name, env in [("interpreted", {"SHEN_KERNEL_DIR":"kernel"}), ("AOT", {"SHEN_
 PY
 ```
 
+## Type-directed specialization: typed vs erased (Phase C)
+
+The *same* Shen source (`bench/typed_vs_erased/typed_numeric.shen`) compiled with
+its `{number --> ...}` signature **consumed** (unboxed OCaml `int`, native ops, no
+tags) vs **ignored**. Three reference points, reported honestly:
+
+- **inlined-tagged** = direct OCaml recursion over boxed `value` (no table lookup),
+  i.e. *this port's own inlined baseline* — isolates the cost of **tags/boxing
+  alone**. This is the honest yardstick.
+- **uniform** = the full tagged path: per-call function-table lookup + currying +
+  boxing (this port's Phase B AOT). The unboxed/uniform ratio is dominated by
+  **dispatch**, not tags — it is an end-to-end number, **not** a "tags cost" claim.
+
+Run: `dune exec bench/typed_vs_erased/bench_main.exe` (apt OCaml 4.14, no flambda).
+
+| workload (N=10M, fib 32) | unboxed | inlined-tagged | uniform |
+|--------------------------|---------|----------------|---------|
+| lcg (loop-carried)       | 12.2ms  | 21.3ms (1.8×)  | 2972ms (245×) |
+| loopsum (sumto)          |  9.4ms  | 18.4ms (2.0×)  | 2452ms (261×) |
+| fibo 32 (tree recursion) | 11.3ms  | 15.9ms (1.4×)  | 1429ms (127×) |
+
+**Honest reading.** Dropping tags buys **~1.4–2.0×** here (avoiding a per-iteration
+`Int` heap box). That is **below** the order-of-10× the thesis targets — because the
+big wins (autovectorization, unboxing propagation once tags are gone) require
+**flambda**, which the apt 4.14 sandbox does not have. On the canonical 5.3/flambda
+build these numbers should grow; treat 1.4–2.0× as a floor for the tag-erasure win
+on this toolchain. The 127–261× vs uniform is real but is mostly the cost of table
+dispatch + currying that *any* AOT call elides, not tag erasure — so it is reported
+separately and not quoted as the specialization headline.
+
+**Not yet measured (needs other toolchains):** vs shen-cl/SBCL on the same typed
+source (shen-cl not installable in this sandbox); the flambda 5.3 numbers.
+
 ## Conformance wall-time
 
 `python3 scripts/run_kernel_suite.py` runs the 35 ShenOSKernel-41.1 groups, each

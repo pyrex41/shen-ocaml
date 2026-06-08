@@ -1,0 +1,23 @@
+; Phase C: compile typed_numeric.shen to specialized (unboxed int) + uniform
+; OCaml. The generated module's register () installs the dual entry points.
+
+(rule
+ (target specialized.ml)
+ (deps
+  %{exe:../../tools/gen_specialize.exe}
+  typed_numeric.shen)
+ (action
+  (run %{exe:../../tools/gen_specialize.exe} typed_numeric.shen %{target})))
+
+(library
+ (name shen_typed_numeric)
+ (modules specialized)
+ (flags
+  (:standard -w -a))
+ (libraries shen))
+
+; Benchmark executable (manual trigger; not part of dune test).
+(executable
+ (name bench_main)
+ (modules bench_main)
+ (libraries shen shen_typed_numeric unix))

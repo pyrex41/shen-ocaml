@@ -17,3 +17,8 @@
  (name gen_aot_kernel)
  (modules gen_aot_kernel)
  (libraries shen))
+
+(executable
+ (name gen_specialize)
+ (modules gen_specialize)
+ (libraries shen))
