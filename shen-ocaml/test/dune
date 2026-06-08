@@ -51,12 +51,12 @@
  (modules test_types_kl_aot)
  (libraries shen_aot_kernel))
 
-; Disabled: read-from-string hangs in kernel reader — re-enable after Task 5a fix
+; Phase A conformance regression gate (bounded, in-process, clean subset).
+; Full per-group conformance lives in scripts/run_kernel_suite.py (see STATUS.md).
 (test
  (name test_kernel_shen_suite)
  (modules test_kernel_shen_suite)
- (libraries shen)
- (enabled_if false)
+ (libraries shen str unix)
  (deps
   (source_tree %{workspace_root}/kernel)
   (source_tree %{workspace_root}/test/shen))

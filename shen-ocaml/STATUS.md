@@ -1,4 +1,41 @@
-# Shen-OCaml Status (2026-04-06)
+# Shen-OCaml Status (2026-06-08)
+
+## Kernel conformance (Phase A)
+
+Suite: ShenOSKernel-41.1 `test/shen/kerneltests.shen` (35 `report` groups) driven
+by `test/shen/harness.shen`.
+
+- **Per-group isolated run** (each group a fresh process — `scripts/run_kernel_suite.py`):
+  **113 passed / 16 failed**, plus **N Queens** which hangs (see below). 129 tests
+  account for + N Queens ≈ the ~134 shen-rust runs.
+- **In-process regression gate** (`dune test` → `test_kernel_shen_suite`): the
+  order-independent clean subset (22 groups) runs in one process: **76 passed / 0
+  failed**. This is the always-on gate; the script above is the honest headline.
+
+Both modes measured on the OCaml 4.14 apt sandbox (see implementation_plan.md
+"Deviation"). Run the full table with `python3 scripts/run_kernel_suite.py`.
+
+### Open conformance issues (the long tail)
+
+1. **Type-checker rejects well-typed `(tc +)` code.** `(load "n queens.shen")`
+   under `(tc +)` fails: *"type error in rule 1 of n-queens.all_Ns?"* on the
+   plainly well-typed `all_Ns? : number --> (list number) --> boolean`. After the
+   failed load, `(n-queens 5)` hangs (half-defined functions). The same family of
+   `(tc +)` groups account for most failures: **yacc (4)**, **L interpreter (3)**,
+   **secd (3)**, **quantifier machine (2)**, **montague (1)**, **search (1)**,
+   **spreadsheet (1)**, **Prolog interpreter (1)**. Likely a single bug in how the
+   sequent prover (sequent.kl / t-star.kl) executes on the interpreter. Needs a
+   shen-cl reference to diff intermediate proof state (unavailable in this
+   sandbox — network blocked). **Not yet fixed; highest-value next target.**
+2. **Order-dependent `complement` (binary number datatype).** Passes in isolation,
+   fails in-process after "Prolog tableau". `defprolog complement` gives it arity 6
+   (its horn-clause procedure `define complement P1 P2 B L K C -> ...`); the binary
+   `report` form is `shen->kl`-compiled as a unit, so `(complement [1 0])` is
+   compiled to a currying lambda (6 > 1 args) *before* the in-group
+   `(load "binary.shen")` redefines complement to arity 1 — so it returns a closure.
+   An eval compile-vs-load timing interaction. Excluded from the in-process gate;
+   tracked here.
+3. **N Queens hang** is a downstream symptom of (1), not an independent bug.
 
 ## What Works
 
@@ -35,7 +72,7 @@
 - **IR tail annotations**: `ir.ml` annotates tail positions but no backend consumes them
 - **Symbol interning in values**: `Sym of string` uses string equality, not interned IDs
 - **Native vs shen-cl `overwrite.lsp`**: Not yet compared (reference tree not in this workspace)
-- **Kernel test suite**: Not yet run (`kerneltests.shen` from ShenOSKernel-41.1)
+- **Type checker on typed user code**: rejects some well-typed `(tc +)` programs (see Open conformance issues)
 ## Code Sizes
 
 | File | Lines | Purpose |
