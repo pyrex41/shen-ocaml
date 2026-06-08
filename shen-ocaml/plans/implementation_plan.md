@@ -276,3 +276,35 @@ defuns too; direct intra-unit calls; benchmark AOT vs interpreted *execution*
 - [ ] Switch `Sym of string` to `Sym of int` using interned IDs
 - [ ] Update equality to use ID comparison (O(1) vs O(n) string compare)
 - [ ] Benchmark the improvement
+
+### Task 9: Phase C — type-directed specialization ✅ (v1)
+
+The project's differentiator: consume `(tc +)` signatures to emit unboxed code.
+
+- [x] Type query: declared `{ number --> ... }` signature is the only input;
+      `tc +` is the proof warrant (`test_specialize` loads under tc+ first). The
+      kernel's `shen.*sigf*` holds compiled prolog abstractions, not readable
+      types, so the declared type is read from source — faithful + proven.
+- [x] Mechanism (`src/codegen/ocaml_specialize.ml`): single-clause `number`-mono
+      functions over `{+ - *}`, comparisons, `if`, `let`, and calls to other
+      specialized functions get a second unboxed-`int` entry point; a uniform
+      wrapper dispatches `Int` args (while the web is valid) to it and falls back
+      otherwise. Specializability is a fixpoint over the call graph.
+- [x] Soundness FIRST (`test_specialize.ml`): bit-identical incl. 63-bit overflow;
+      float + non-subset bodies fall back; `(tc -)`/non-number never specialized;
+      redefinition of a web member invalidates the web (`Spec.web_valid` + `Env`
+      redefine hook) and callers follow the new definition.
+- [x] Measurement (`bench/typed_vs_erased`, BENCHMARKS.md): unboxed vs inlined
+      tagged 1.4–2.0× (honest tag win; flambda needed for 10×); vs uniform
+      127–261× end-to-end. fibo/loopsum + the "types don't help" checks (usescons,
+      untyped kernel) included.
+- [x] Demonstration artifact: `bench/typed_vs_erased/README.md` (source, signature,
+      both generated entry points, ladder).
+
+**Explicitly out of scope for v1 (future work):** floats / `/` (rationals);
+polymorphic specialization; list/vector shape specialization; cross-module
+specialization; JIT-style runtime profiling; multi-clause pattern-match bodies;
+devirtualizing the uniform path (direct intra-unit calls). Also: the tag-erasure
+headline needs the canonical flambda 5.3 toolchain to reach the thesis's ~10×, and
+a vs-shen-cl/SBCL comparison needs shen-cl installed — both blocked in the apt
+sandbox; re-run there.

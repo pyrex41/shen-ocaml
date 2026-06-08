@@ -1,5 +1,38 @@
 # Shen-OCaml Status (2026-06-08)
 
+## Type-directed specialization (Phase C) — the differentiator
+
+The thing no other Shen port does: **consume the `(tc +)` signature to drop tags.**
+`src/codegen/ocaml_specialize.ml` emits, for a single-clause `define` whose declared
+signature is monomorphic over `number` and whose body stays in an int subset
+(`+ - *`, comparisons, `if`, `let`, calls to other specialized functions), a second
+entry point over **unboxed OCaml `int`** (native ops, no tag dispatch) beside the
+uniform `value` entry.
+
+- **Type query**: the declared `{ number --> ... }` signature is the *only* input
+  (never the body). The proof warrant is the checker — `test_specialize` loads the
+  source under `(tc +)` and refuses a fast path for anything that doesn't
+  type-check. (The kernel stores signatures as compiled prolog abstractions in
+  `shen.*sigf*`, not readable types, so the declared type is read from the source
+  it came from — faithful and tc+-proven.)
+- **Soundness (tests written first)**: bit-identical to the interpreter on every
+  input incl. 63-bit overflow (both paths native `int`); float args and
+  non-subset bodies fall back to the uniform entry silently; **redefinition** of
+  any web member invalidates the web (`Spec.web_valid` + an `Env` redefine hook) so
+  callers observe the new definition. All in `test_specialize`.
+- **Measured (BENCHMARKS.md, `bench/typed_vs_erased`)**: unboxed vs an *inlined
+  tagged* baseline = **1.4–2.0×** on loop-carried folds (the honest tag-erasure
+  win — below the thesis's order-of-10× because that needs flambda, absent on the
+  apt 4.14 sandbox; treat as a floor). vs the full uniform table-dispatch path =
+  127–261× end-to-end (mostly dispatch, **not** tags — reported separately).
+- **Demonstration**: `bench/typed_vs_erased/README.md` shows the source, the
+  signature, the generated OCaml for *both* entry points, and the ladder.
+
+v1 scope (narrow by design): single-clause `number`-mono int functions. Out of
+scope (recorded in the plan): floats/`/`, polymorphic + list/vector specialization,
+cross-module specialization, JIT, and devirtualizing the uniform path. The kernel
+suite (134/0) is untyped KL, so specialization does nothing there — expected.
+
 ## AOT backend (Phase B) — kernel compiled to native OCaml
 
 `src/codegen/ocaml_compile.ml` is a true KL→OCaml compiler (vs `ocaml_gen.ml`,
