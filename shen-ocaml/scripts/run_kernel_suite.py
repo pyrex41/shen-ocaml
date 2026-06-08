@@ -30,10 +30,10 @@ KERNEL = os.path.join(ROOT, "kernel")
 BIN = os.path.join(ROOT, "_build", "default", "bin", "main.exe")
 
 # Measured baseline (per-process isolated run, OCaml 4.14 sandbox, 2026-06).
-# After the Bool/Sym(true/false) equality fix: 128 passed / 6 failed.
-# Remaining failures: yacc (4), spreadsheet (1), montague (1).
-BASELINE_PASS = 128
-BASELINE_FAIL = 6
+# 113/16 -> 128/6 (Bool/Sym boolean equality) -> 133/1 (type primitive arity 2).
+# Remaining failure: spreadsheet (1).
+BASELINE_PASS = 133
+BASELINE_FAIL = 1
 
 
 def split_forms(text):

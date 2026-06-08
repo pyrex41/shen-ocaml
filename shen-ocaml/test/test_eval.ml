@@ -74,7 +74,7 @@ let run () =
   assert (eval_one "(boolean? (intern \"true\"))" = Bool true);
   assert (eval_one "(boolean? (intern \"false\"))" = Bool true);
   assert (eval_one "(if (intern \"true\") 1 2)" = Int 1);
-  assert (eval_one "(type 42)" = Int 42);
+  assert (eval_one "(type 42 number)" = Int 42);
   assert (eval_one "(eval-kl (cons + (cons 1 (cons 2 ()))))" = Int 3);
   assert (
     match eval_one "(get-time unix)" with

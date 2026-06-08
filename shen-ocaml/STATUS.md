@@ -6,12 +6,13 @@ Suite: ShenOSKernel-41.1 `test/shen/kerneltests.shen` (35 `report` groups) drive
 by `test/shen/harness.shen`.
 
 - **Per-group isolated run** (each group a fresh process — `scripts/run_kernel_suite.py`):
-  **128 passed / 6 failed** (134 total — matches the shen-rust count). Up from
-  113/16 after the Bool/Sym boolean-equality fix below; N Queens now passes (was a
-  hang). Remaining failures: **yacc (4)**, **spreadsheet (1)**, **montague (1)**.
-- **In-process regression gate** (`dune test` → `test_kernel_shen_suite`): the
-  order-independent clean subset (22 groups) runs in one process: **76 passed / 0
-  failed**. This is the always-on gate; the script above is the honest headline.
+  **133 passed / 1 failed** (134 total — matches the shen-rust count). Progression:
+  113/16 → 128/6 (Bool/Sym boolean equality) → 133/1 (`type` primitive arity 2).
+  Only remaining failure: **spreadsheet (1)**.
+- **In-process regression gate** (`dune test` → `test_kernel_shen_suite`): 30 of the
+  35 groups run in one process: **117 passed / 0 failed**. This is the always-on
+  gate (excludes spreadsheet, the order-dependent binary group, and the slowest
+  groups primes/einsteins/c-); the script above is the honest headline.
 
 Both modes measured on the OCaml 4.14 apt sandbox (see implementation_plan.md
 "Deviation"). Run the full table with `python3 scripts/run_kernel_suite.py`.
@@ -33,10 +34,17 @@ the term fell through to the `symbol?` branch and clashed with the declared
 symbols, and `is_true` accepts the `true` symbol (value.ml). Regression covered by
 the conformance suite (128/6) and `test_eval` boolean cases.
 
-### Open conformance issues (remaining long tail — 6 failures)
+### Fixed: `type` primitive had wrong arity (broke all typed `defcc` grammars)
 
-1. **yacc (4 failures)** and **spreadsheet (1)**, **montague (1)**: not yet
-   diagnosed. yacc is the largest remaining cluster — next target.
+`(type Expr Type)` is the arity-2 type-annotation primitive (returns `Expr`), but
+this port registered it as **arity 1**. The kernel's YACC default-semantics path
+(`shen.use-type-info` → `(type Out ResultType)`) over-applied it → "too many
+arguments", failing every typed `defcc` grammar. Fixed `pr_type`/metadata to
+arity 2 (primitives.ml). Impact: yacc 9/4 → 13/0, montague 2/1 → 3/0 (128/6 → 133/1).
+
+### Open conformance issues (remaining long tail — 1 failure)
+
+1. **spreadsheet (1 failure)**: not yet diagnosed.
 2. **Order-dependent `complement` (binary number datatype).** Passes in isolation,
    fails in-process after "Prolog tableau". `defprolog complement` gives it arity 6
    (its horn-clause procedure `define complement P1 P2 B L K C -> ...`); the binary

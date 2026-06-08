@@ -287,9 +287,14 @@ let pr_get_time = make_closure 1 (function
   | _ -> Error "get-time: unix or run expected"
 )
 
-let pr_type = make_closure 1 (function
-  | [x] -> x
-  | _ -> Error "type: one argument expected"
+(* [(type Expr Type)] is the arity-2 type-annotation primitive: it asserts [Expr]
+   has [Type] (used by the checker) and returns [Expr] unchanged at runtime. The
+   kernel emits it e.g. in YACC default semantics (shen.use-type-info → [(type Out T)]),
+   so arity 1 here over-applied and broke every typed [defcc] grammar with
+   "too many arguments". *)
+let pr_type = make_closure 2 (function
+  | [x; _ty] -> x
+  | _ -> Error "type: (type expr type) expected"
 )
 
 let pr_eval_kl = make_closure 1 (function
@@ -390,7 +395,7 @@ let primitive_metadata_entries : (string * int) list =
     ("read-byte", 1);
     ("write-byte", 2);
     ("get-time", 1);
-    ("type", 1);
+    ("type", 2);
     ("eval-kl", 1);
     ("if", 3);
     ("and", 2);
