@@ -126,12 +126,24 @@ Five root-cause fixes got there (each its own commit, each with a regression tes
 Tooling stood up: `scripts/run_kernel_suite.py` (full per-group runner, baseline
 gate) and `test/test_kernel_shen_suite.ml` (in-process regression gate).
 
-**Remaining Phase A work (not yet done):**
-- LC-3 integration oracle: vendor `lc3.shen`/`asmhelp.shen`/`lc3asm.shen` under
-  `tests/integration/`, assert byte-identical machine code + `prolog?` answers.
-- TCO regression test (1M-deep direct and mutual recursion).
-- Number-tower decision (63-bit native ints vs zarith) — audit suite for bignum
-  needs; document.
+**Remaining Phase A work:**
+- ✅ **TCO regression test** (1M-deep direct *and* mutual tail recursion) — added to
+  `test_eval.ml`. Both shapes complete without stack growth: the interpreter's apply
+  path (`eval → apply_value → closure → apply_user → eval`) stays in tail position
+  and OCaml's TCO keeps the stack flat. No trampoline needed.
+- ✅ **Number-tower decision: 63-bit native OCaml ints, no zarith (for now).** The
+  full kernel suite (incl. `prime*? 1000003`, `count-change 100`) passes at 134/0
+  with native ints; an audit found no ≥16-digit literals and no bignum-dependent
+  test. zarith is unavailable in the apt sandbox anyway (opam blocked). **Revisit**
+  if user code needs arbitrary precision; the prompt's warning that bolting it on
+  after AOT is painful is noted — the AOT/specialization design should leave a seam
+  for an overflow-check → promote path. Documented as a deviation here.
+- **LC-3 integration oracle: BLOCKED (files unavailable).** `lc3.shen`,
+  `asmhelp.shen`, `lc3asm.shen` are sibling work not present in this repo or
+  container, and the network is restricted, so they cannot be vendored here. Re-do
+  on a host that has them: drop under `tests/integration/`, assert byte-identical
+  machine code (`Hi!` → `[48 0 224 2 240 34 240 37 0 72 0 105 0 33 0 0]`, loop →
+  `R0=10`, `mem[12294]=10`) and matching `prolog?` answers.
 - Bug noted while debugging: the **REPL `define` path does not type-check** under
   `(tc +)` (an ill-typed define is accepted at the REPL though `load` rejects it).
 

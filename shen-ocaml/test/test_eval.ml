@@ -87,4 +87,13 @@ let run () =
     | _ -> false);
   let _ = eval_one "(defun __replf (X) (* X 2))" in
   assert (eval_one "(__replf 3)" = Int 6);
+  (* TCO: kernel and user code assume unbounded direct AND mutual tail recursion.
+     1M non-tail frames would overflow OCaml's stack, so completing proves the
+     interpreter's apply path (eval -> apply_value -> closure -> apply_user -> eval)
+     stays in tail position for both shapes. *)
+  let _ = eval_one "(defun __tco_down (N) (if (= N 0) done (__tco_down (- N 1))))" in
+  assert (eval_one "(__tco_down 1000000)" = Sym "done");
+  let _ = eval_one "(defun __tco_ping (N) (if (= N 0) done (__tco_pong (- N 1))))" in
+  let _ = eval_one "(defun __tco_pong (N) (if (= N 0) done (__tco_ping (- N 1))))" in
+  assert (eval_one "(__tco_ping 1000000)" = Sym "done");
   print_endline "  Interpreter tests passed."
