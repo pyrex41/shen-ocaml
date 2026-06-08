@@ -1,4 +1,0 @@
-(lang dune 3.20)
-(name shen-ocaml)
-(sections (lib .) (bin ../../bin) (doc ../../doc/shen-ocaml))
-(files (lib (META dune-package opam)) (bin (shen-ocaml)) (doc (README.md)))

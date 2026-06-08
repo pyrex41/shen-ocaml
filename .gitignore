@@ -1,0 +1,23 @@
+# OCaml / dune build artifacts
+_build/
+*.install
+*.merlin
+.merlin
+
+# opam local switch
+_opam/
+
+# OCaml compiled output
+*.cmi
+*.cmo
+*.cmx
+*.cmt
+*.cmti
+*.cma
+*.cmxa
+*.cmxs
+*.o
+*.a
+
+# OS / editor cruft
+.DS_Store
