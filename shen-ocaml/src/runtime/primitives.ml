@@ -240,10 +240,14 @@ let pr_open = make_closure 2 (function
       | _ -> ""
     in
     let full_path = home ^ path in
+    (* A failed [open] must *unwind* (like [simple-error]), not return an [Error]
+       value: the kernel reader loops [read-byte] until [-1], and an [Error] value
+       is never [-1], so returning it spins forever. Matches shen-cl, where
+       [open] of a missing file signals an error trappable by [trap-error]. *)
     (try
       if dir = "in" then Stream (In_chan (open_in_bin full_path))
       else Stream (Out_chan (open_out_bin full_path))
-    with Sys_error msg -> Error ("open: " ^ msg))
+    with Sys_error msg -> raise (User_error ("open: " ^ msg)))
   | _ -> Error "open: filename and direction in|out expected"
 )
 

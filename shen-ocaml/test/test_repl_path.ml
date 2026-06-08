@@ -68,7 +68,25 @@ let () =
   | v ->
       failwith
         ("kernel eval (tuple? (@p 1 2)): expected true, got " ^ to_string v));
-  (match eval_via_kernel {|(load "test/shen/tiny.shen")|} with
+  (* Regression (Task 5a): loading a *missing* file must error and unwind, not
+     hang. [open] of a nonexistent path previously returned an [Error] value, and
+     the kernel's [read-byte]-until-[-1] loop spun forever on it. Wrapped in
+     [trap-error] so a correct error surfaces as a value instead of looping. *)
+  (match
+     eval_via_kernel
+       {|(trap-error (load "no-such-file-xyzzy.shen") (lambda E error))|}
+   with
+  | Sym "error" -> ()
+  | v ->
+      failwith
+        ("load of missing file should error (not hang), got " ^ to_string v));
+  (* [*home-directory*] is the cwd captured at boot, so write [tiny.shen] there and
+     load it by relative name — independent of where the test runner is invoked. *)
+  let tiny_name = "tiny_repltest.shen" in
+  let oc = open_out (Filename.concat (Sys.getcwd ()) tiny_name) in
+  output_string oc "(define double X -> (* X 2))\n";
+  close_out oc;
+  (match eval_via_kernel (Printf.sprintf {|(load "%s")|} tiny_name) with
   | Sym "loaded" -> ()
   | v ->
       failwith

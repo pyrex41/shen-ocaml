@@ -25,9 +25,35 @@ What works end-to-end:
 
 ## Environment
 
-- OCaml 5.3.0 via `nix develop` (flake.nix in project root)
-- dune 3.20.2
-- All OCaml commands: `nix develop --command bash -c '...'`
+- **Canonical**: OCaml 5.3.0 via `nix develop` (flake.nix in project root), dune 3.20.2.
+  All OCaml commands: `nix develop --command bash -c '...'`.
+
+### Deviation: sandbox toolchain (host limitation, documented per ground rules)
+
+Some CI/sandbox hosts (e.g. Claude Code web execution) have **no `nix` and no
+network access to `opam.ocaml.org`**, so the canonical OCaml 5.3 toolchain cannot
+be installed there. On those hosts the project is built with Ubuntu apt's
+**OCaml 4.14.1 + dune 3.14.0** (`apt-get install ocaml-nox ocaml-dune
+ocaml-findlib`). To keep one source tree buildable in *both* environments the
+following backwards-compatible changes were made (5.3/nix still satisfies them):
+
+- `dune-project`: `(lang dune 3.20)` → `(lang dune 3.14)`; ocaml floor
+  `(>= 5.3.0)` → `(>= 4.14)`. (Lower floors; 5.3 + dune 3.20 remain valid.)
+- Removed the unused `(using menhir 2.1)` stanza — there are **no `.mly`** files.
+- Removed the unused `cmdliner` dependency from `bin/dune` — `bin/main.ml` never
+  referenced it. Pure dead-dep removal.
+
+No source code uses OCaml-5-only features (no effects/Domain/`In_channel`), so the
+interpreter, codegen, and kernel boot build unchanged under 4.14. **Future work**
+(Phase C specialization) may want flambda / `Int63` overflow intrinsics that are
+better on 5.x; if a 5.x-only feature is adopted, the 4.14 fallback must be guarded
+or the apt path retired with a note here.
+
+**Gate status in the apt sandbox**: Gate 2 (`dune build`) and Gate 3 (`dune test`)
+run and pass. Gate 1 (`shengen-codegen.sh`) and Gate 4 (`shen-check.sh`, needs
+`shen-sbcl`) require external tools unavailable here; `specs/core.shen` and the
+generated `guard_types.{ml,mli}` were not modified, so their verified state is
+unchanged. Re-run gates 1/4 on a nix host before relying on type-bearing claims.
 
 ## Completed tasks
 
