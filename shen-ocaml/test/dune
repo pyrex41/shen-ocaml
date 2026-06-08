@@ -63,6 +63,12 @@
    %{workspace_root}/test/fixtures/aot_fixture.kl
    (run %{test}))))
 
+; Phase B: boot the kernel from AOT-compiled native code.
+(test
+ (name test_aot_kernel_boot)
+ (modules test_aot_kernel_boot)
+ (libraries shen shen_aot_kernel_compiled))
+
 ; Phase A conformance regression gate (bounded, in-process, clean subset).
 ; Full per-group conformance lives in scripts/run_kernel_suite.py (see STATUS.md).
 (test

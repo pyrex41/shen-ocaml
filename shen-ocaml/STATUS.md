@@ -1,5 +1,31 @@
 # Shen-OCaml Status (2026-06-08)
 
+## AOT backend (Phase B) — kernel compiled to native OCaml
+
+`src/codegen/ocaml_compile.ml` is a true KL→OCaml compiler (vs `ocaml_gen.ml`,
+which emits the AST as data). Each `defun` compiles to a native OCaml closure over
+the uniform `value` type; control forms map to native OCaml; global calls go
+through the function table for redefinition safety and free interop.
+
+- **Whole kernel AOT-compiled**: `gen_aot_kernel` compiles all 21 `.kl` files to
+  one OCaml module (`aot_kernel_compiled/`). **1073 defuns compiled** to native
+  code; **60 forms interpreted** (the few giant type-checker defuns over the
+  node-size gate — which would overflow `ocamlopt`'s stack — plus genuine
+  top-level effects), run via the oracle `eval_kl`. Boot with `SHEN_AOT=1` (or
+  `Aot_boot.boot_kernel_aot ()`).
+- **Conformance: 134/0 in AOT mode**, identical to interpreted
+  (`SHEN_AOT=1 python3 scripts/run_kernel_suite.py`). Exit gate met: suite green
+  interpreted *and* AOT.
+- **Boot time: 5.0× faster** — interpreted ~123 ms median vs AOT ~25 ms median
+  (7 runs each, apt OCaml 4.14 sandbox). See BENCHMARKS.md.
+- **Bit-identical**: `test_aot_fixture` proves AOT == interpreter on factorial,
+  mutual recursion, let/and/or/cond/lambda/trap-error, partial application, and
+  200k-deep tail recursion. `test_aot_kernel_boot` smoke-checks the AOT kernel.
+
+Not yet done in Phase B: direct-call devirtualization within a unit (calls go
+through the table for now), AOT-compiling the giant type-checker defuns (gated to
+the interpreter), and a flatter codegen so those compile without the node gate.
+
 ## Kernel conformance (Phase A)
 
 Suite: ShenOSKernel-41.1 `test/shen/kerneltests.shen` (35 `report` groups) driven

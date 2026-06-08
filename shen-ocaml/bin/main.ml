@@ -82,10 +82,16 @@ let () =
   (* [open Primitives] shadows [Eval.initialise]; eval options must run too. *)
   Shen.Interp.Eval.initialise ();
   initialise ();
+  (* SHEN_AOT=1 boots from native AOT-compiled kernel code (no .kl interpretation);
+     otherwise the interpreted boot (the oracle) loads the 21 .kl files. *)
   (try
-     let kernel_dir = find_kernel_dir () in
-     boot_kernel ~kernel_dir;
-     print_endline "Kernel ready."
+     if Sys.getenv_opt "SHEN_AOT" = Some "1" then (
+       Shen_aot_kernel_compiled.Aot_boot.boot_kernel_aot ();
+       print_endline "Kernel ready (AOT).")
+     else (
+       let kernel_dir = find_kernel_dir () in
+       boot_kernel ~kernel_dir;
+       print_endline "Kernel ready.")
    with Boot_error msg ->
      Printf.eprintf "Kernel boot failed: %s\n" msg;
      exit 1);

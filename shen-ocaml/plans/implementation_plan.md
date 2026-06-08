@@ -240,15 +240,36 @@ printf '(define double {number --> number} X -> (* X 2))\n(double 21)\n' | \
 - [ ] File loading: create a small `test/hello.shen`, load it with `(load "test/hello.shen")`
 - [ ] Document what passes and what fails in STATUS.md
 
-### Task 7: Code AOT — compile KL to OCaml function bodies
+### Task 7: Code AOT — compile KL to OCaml function bodies ✅ (Phase B)
 
-Currently only "data AOT" (KL as OCaml data literals). True code AOT:
+A true KL→OCaml compiler (`src/codegen/ocaml_compile.ml`), not the data emitter.
 
-- [ ] Generate `let kl_fname args = ...` with actual OCaml function bodies
-- [ ] Handle tail calls (OCaml does TCO for direct recursion)
-- [ ] Handle partial application in generated code
-- [ ] Test with one kernel file, then scale to all 21
-- [ ] Measure boot time improvement vs interpreter
+- [x] Generate native OCaml closures per `defun` over the uniform `value` type
+- [x] Tail calls stay stack-flat (calls go through the table; each hop is an
+      OCaml tail call — verified by 200k-deep recursion in `test_aot_fixture`)
+- [x] Partial application identical to the interpreter (reuses `make_closure`)
+- [x] Compile one fixture (`test_aot_fixture`, bit-identical) then **all 21 kernel
+      files** (`gen_aot_kernel` → `aot_kernel_compiled/`): 1073 defuns compiled,
+      60 interpreted-fallback (giant type-checker defuns over the node-size gate)
+- [x] **Boot time 5.0× faster** (123ms → 25ms median; BENCHMARKS.md)
+- [x] Full conformance **134/0 in AOT mode** (`SHEN_AOT=1 scripts/run_kernel_suite.py`)
+
+**Design notes / decisions:**
+- Calls go *through the function table* (`apply_value (Sym name) args`) for
+  redefinition safety (`eval-kl` can redefine anything) and free interop with
+  interpreter-defined functions. Direct-call devirtualization within a unit is a
+  later optimization (Phase C-adjacent).
+- A node-size gate (`AOT_MAX_NODES`, default 220) routes the handful of giant
+  type-checker defuns to the interpreter, so the generated module compiles under
+  the default OS stack (`ocamlopt` recurses over the generated AST; the giants
+  would overflow it). Raising the gate needs flatter codegen — recorded as future
+  work, not a correctness issue (the interpreter is the oracle for those).
+- Arg evaluation is left-to-right (trivial operands inlined, non-trivial bound to
+  temps) so observable side-effect order matches the interpreter.
+
+**Remaining Phase B polish (not blocking):** flatter codegen to compile the giant
+defuns too; direct intra-unit calls; benchmark AOT vs interpreted *execution*
+(boot is done) — but a real execution speedup belongs to Phase C specialization.
 
 ### Task 8: Symbol interning optimization
 

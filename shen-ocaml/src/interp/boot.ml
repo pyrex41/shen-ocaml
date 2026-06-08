@@ -63,19 +63,19 @@ let load_kl_file path =
       | _ -> ())
     forms
 
-let boot_kernel ~kernel_dir =
+(** Orchestrate a kernel boot. [load] populates the kernel function namespace
+    (interpreting the 21 [.kl] files, or running the AOT-compiled [boot ()]); the
+    pre/post steps — port metadata, [*home-directory*], native [hash],
+    [shen.initialise], metadata registration — are identical either way. The AOT
+    path lives outside this library (the compiled-kernel lib depends on [shen]),
+    so it injects its [load] thunk here. *)
+let boot_with ~load =
   set_port_metadata ();
   (* Set *home-directory* to cwd so (load ...) resolves relative paths. *)
   let cwd = Sys.getcwd () in
   let home = if cwd = "" then "" else cwd ^ "/" in
   set_global "*home-directory*" (Str home);
-  List.iter
-    (fun base ->
-      let path = Filename.concat kernel_dir base in
-      if not (Sys.file_exists path) then
-        raise (Boot_error ("kernel file not found: " ^ path));
-      load_kl_file path)
-    kernel_files;
+  load ();
   (* Native [hash] before [shen.initialise] so *property-vector* buckets stay consistent. *)
   Runtime.Primitives.install_native_hash ();
   let init_expr = KLApp (KLSym "shen.initialise", []) in
@@ -84,6 +84,16 @@ let boot_kernel ~kernel_dir =
   | _ -> ());
   Runtime.Primitives.register_hash_fn_metadata ();
   Runtime.Primitives.register_all_metadata ()
+
+let boot_kernel ~kernel_dir =
+  boot_with ~load:(fun () ->
+      List.iter
+        (fun base ->
+          let path = Filename.concat kernel_dir base in
+          if not (Sys.file_exists path) then
+            raise (Boot_error ("kernel file not found: " ^ path));
+          load_kl_file path)
+        kernel_files)
 
 let find_kernel_dir () =
   let ok d = Sys.file_exists (Filename.concat d "core.kl") in

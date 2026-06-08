@@ -2,4 +2,4 @@
  (name main)
  (public_name shen-ocaml)
  (modules main)
- (libraries shen))
+ (libraries shen shen_aot_kernel_compiled))

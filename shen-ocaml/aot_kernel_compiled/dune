@@ -1,0 +1,18 @@
+; Phase B: the kernel, compiled to native OCaml (vs aot_kernel/, which is the KL
+; AST embedded as data). Boots by linking + running boot() rather than
+; interpreting 21 .kl files.
+
+(rule
+ (target aot_kernel_compiled.ml)
+ (deps
+  %{exe:../tools/gen_aot_kernel.exe}
+  (source_tree %{workspace_root}/kernel))
+ (action
+  (run %{exe:../tools/gen_aot_kernel.exe} %{workspace_root}/kernel %{target})))
+
+(library
+ (name shen_aot_kernel_compiled)
+ (modules aot_kernel_compiled aot_boot)
+ (flags
+  (:standard -w -a))
+ (libraries shen))

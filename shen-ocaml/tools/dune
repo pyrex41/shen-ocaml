@@ -12,3 +12,8 @@
  (name gen_aot)
  (modules gen_aot)
  (libraries shen))
+
+(executable
+ (name gen_aot_kernel)
+ (modules gen_aot_kernel)
+ (libraries shen))

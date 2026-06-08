@@ -49,6 +49,28 @@ let mangle_var name =
 let counter = ref 0
 let fresh () = incr counter; "__t" ^ string_of_int !counter
 
+(** Node count of a KL expression — a proxy for the OCaml AST depth the native
+    compiler must recurse over. Giant kernel defuns (e.g. [shen.use-type-info],
+    the type-checker monsters) compile to expressions deep enough to overflow
+    [ocamlopt]'s stack at the default limit, so bodies over [max_compile_nodes]
+    fall back to the interpreter (the oracle) instead of being AOT-compiled. *)
+let rec kl_size = function
+  | KLInt _ | KLFloat _ | KLStr _ | KLSym _ | KLBool _ | KLNil -> 1
+  | KLCons (a, b) -> 1 + kl_size a + kl_size b
+  | KLVec arr -> 1 + Array.fold_left (fun n e -> n + kl_size e) 0 arr
+  | KLApp (f, args) -> 1 + kl_size f + List.fold_left (fun n e -> n + kl_size e) 0 args
+  | KLLambda (_, b) -> 1 + kl_size b
+  | KLLet (_, v, b) -> 1 + kl_size v + kl_size b
+  | KLIf (c, t, e) -> 1 + kl_size c + kl_size t + kl_size e
+  | KLDefun (_, _, b) -> 1 + kl_size b
+
+(** Bodies above this many nodes are interpreted, not compiled (keeps the native
+    compiler's recursion within the default OS stack). Overridable via env. *)
+let max_compile_nodes =
+  match Sys.getenv_opt "AOT_MAX_NODES" with
+  | Some s -> ( try int_of_string (String.trim s) with _ -> 220)
+  | None -> 220
+
 (** Parameter names from a defun/lambda parameter descriptor (KLApp/KLSym/KLNil). *)
 let param_names = function
   | KLNil -> []
@@ -160,26 +182,28 @@ and compile_trap locals body handler =
     (compile locals body) (compile locals handler)
 
 and compile_app locals f args =
-  (* A-normal form: evaluate callee first (if non-trivial), then args left-to-right. *)
+  (* Evaluate callee first, then args left-to-right. Trivial subexpressions
+     (literals / variables / symbols) have no side effects and no observable
+     evaluation order, so inline them directly instead of binding a temp — this
+     keeps the generated AST shallow (deep ANF nesting overflows the OCaml
+     compiler on large kernel defuns). Only non-trivial subexpressions get a
+     [let] temp, in left-to-right order. *)
   let bindings = ref [] in
-  let bind e =
-    let t = fresh () in
-    bindings := !bindings @ [ (t, compile locals e) ];
-    t
+  let operand e =
+    if is_trivial e then compile locals e
+    else (
+      let t = fresh () in
+      bindings := (t, compile locals e) :: !bindings;
+      t)
   in
-  let callee =
-    match f with
-    | KLSym s when SS.mem s locals -> mangle_var s
-    | KLSym _ | KLInt _ | KLFloat _ | KLStr _ | KLBool _ | KLNil -> compile locals f
-    | _ -> bind f
-  in
-  let arg_ts = List.map bind args in
+  let callee = operand f in
+  let arg_ts = List.map operand args in
   let core =
     Printf.sprintf "E.apply_value %s [%s]" callee (String.concat "; " arg_ts)
   in
-  List.fold_right
-    (fun (t, e) acc -> Printf.sprintf "(let %s = %s in %s)" t (paren e) acc)
-    !bindings core
+  List.fold_left
+    (fun acc (t, e) -> Printf.sprintf "(let %s = %s in %s)" t (paren e) acc)
+    core !bindings
 
 and compile_defun_expr locals name params body =
   (* Nested/expression-position defun: register and return [Sym name]. *)
@@ -205,19 +229,20 @@ let compile_toplevel_defun ~b name params body =
     "  (let c = %s in\n   Env.set_fn %s c; Env.register_fn_metadata %s %d c);\n"
     (compile_closure params body) (esc name) (esc name) (List.length params)
 
-(** Emit a [boot ()] that runs all forms in order: [defun]s register compiled
-    closures; every other form is embedded as data and run via [eval_kl] (matching
-    [boot.ml] semantics, including raising on an [Error] result). *)
-let compile_file_module b ~source_path forms =
-  counter := 0;
-  Printf.bprintf b "(* Compiled from %s — do not edit by hand. *)\n" source_path;
-  Buffer.add_string b "(* @generated *)\n\n";
+let emit_preamble b =
+  Buffer.add_string b "(* @generated — do not edit by hand. *)\n\n";
   Buffer.add_string b "open Shen.Runtime.Value\n";
   Buffer.add_string b "module E = Shen.Interp.Eval\n";
   Buffer.add_string b "module Env = Shen.Runtime.Env\n";
   Buffer.add_string b "let mkcl = Shen.Runtime.Primitives.make_closure\n";
-  Buffer.add_string b "let eval_form = E.eval_kl\n\n";
-  Buffer.add_string b "let boot () : unit =\n";
+  Buffer.add_string b "let eval_form = E.eval_kl\n\n"
+
+(** Emit [let <fn_name> () : unit = <stmts>] running [forms] in order: [defun]s
+    register compiled closures (mirroring [Eval]'s KLDefun); every other form is
+    embedded as data and run once via [eval_kl] (matching [boot.ml], including
+    raising on an [Error] result). [source_path] only labels error messages. *)
+let emit_boot_fn b ~fn_name ~source_path forms =
+  Printf.bprintf b "let %s () : unit =\n" fn_name;
   let emitted = ref false in
   let emit_other other =
     let data = Buffer.create 64 in
@@ -227,14 +252,49 @@ let compile_file_module b ~source_path forms =
       (Buffer.contents data)
       (esc (source_path ^ ": form error: "))
   in
+  let emit_defun name params body form =
+    if kl_size body > max_compile_nodes then emit_other form
+    else compile_toplevel_defun ~b name params body
+  in
   List.iter
     (fun form ->
       emitted := true;
       match form with
-      | KLDefun (name, params, body) ->
-          compile_toplevel_defun ~b name params body
+      | KLDefun (name, params, body) -> emit_defun name params body form
       | KLApp (KLSym "defun", [ KLSym name; pdesc; body ]) ->
-          compile_toplevel_defun ~b name (param_names pdesc) body
+          emit_defun name (param_names pdesc) body form
       | other -> emit_other other)
     forms;
-  if not !emitted then Buffer.add_string b "  ()\n"
+  ignore !emitted;
+  (* Always end the sequence with [()] — each statement above ends in [;], so a
+     bare trailing [;] would make the following [let boot_<file>] parse as a local
+     let-binding and swallow the rest of the file. *)
+  Buffer.add_string b "  ()\n\n"
+
+(** One [.kl] file → a module with [boot () : unit]. *)
+let compile_file_module b ~source_path forms =
+  counter := 0;
+  Printf.bprintf b "(* Compiled from %s *)\n" source_path;
+  emit_preamble b;
+  emit_boot_fn b ~fn_name:"boot" ~source_path forms
+
+(** All kernel files → one module with a [boot_<file> ()] per file (bounded size)
+    and a [boot ()] that calls them in the given (boot) order. *)
+let compile_kernel_module b (files : (string * kl_expr list) list) =
+  counter := 0;
+  Printf.bprintf b "(* Compiled kernel (%d files) *)\n" (List.length files);
+  emit_preamble b;
+  let fn_of base =
+    "boot_"
+    ^ String.map
+        (fun c -> match c with 'a' .. 'z' | '0' .. '9' -> c | _ -> '_')
+        (Filename.remove_extension base)
+  in
+  List.iter
+    (fun (base, forms) ->
+      Printf.bprintf b "(* --- %s --- *)\n" base;
+      emit_boot_fn b ~fn_name:(fn_of base) ~source_path:base forms)
+    files;
+  Buffer.add_string b "let boot () : unit =\n";
+  List.iter (fun (base, _) -> Printf.bprintf b "  %s ();\n" (fn_of base)) files;
+  Buffer.add_string b "  ()\n"
