@@ -1,0 +1,12 @@
+(rule
+ (target kernel_bundle.ml)
+ (deps
+  (source_tree %{workspace_root}/kernel)
+  %{exe:../tools/gen_all_kernel_forms.exe})
+ (action
+  (run %{exe:../tools/gen_all_kernel_forms.exe} %{workspace_root}/kernel %{target})))
+
+(library
+ (name shen_aot_kernel)
+ (modules kernel_bundle)
+ (libraries shen))

@@ -1,0 +1,9 @@
+(executable
+ (name gen_kl_forms)
+ (modules gen_kl_forms)
+ (libraries shen))
+
+(executable
+ (name gen_all_kernel_forms)
+ (modules gen_all_kernel_forms)
+ (libraries shen))

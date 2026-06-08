@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+"""shengen-ocaml: parse Shen sequent-calculus specs → OCaml guard types.
+
+NOT a Shen interpreter. Reads (datatype ...) blocks from .shen files and
+generates .ml/.mli with abstract types whose constructors validate invariants.
+
+Usage: shengen-ocaml <spec.shen> <output-base>
+  Generates <output-base>.ml and <output-base>.mli
+"""
+
+import re
+import sys
+from dataclasses import dataclass, field
+
+
+# ---- AST ----
+
+@dataclass
+class TypedVar:
+    var: str
+    typ: str
+
+@dataclass
+class GuardCall:
+    op: str
+    args: list[str]
+
+@dataclass
+class Rule:
+    premises: list  # TypedVar | GuardCall
+    conclusion_vars: list[str]
+    conclusion_type: str
+
+@dataclass
+class DatatypeDef:
+    name: str
+    rules: list[Rule] = field(default_factory=list)
+
+
+# ---- Parser ----
+
+def strip_comments(src: str) -> str:
+    """Remove Shen comments \\* ... *\\"""
+    return re.sub(r'\\\*.*?\*\\', '', src, flags=re.DOTALL)
+
+def tokenize(src: str) -> list[str]:
+    tokens = []
+    i = 0
+    while i < len(src):
+        if src[i] in ' \t\n\r':
+            i += 1
+        elif src[i] in '()[];':
+            tokens.append(src[i])
+            i += 1
+        elif src[i] == '[':
+            tokens.append('[')
+            i += 1
+        elif src[i] == ']':
+            tokens.append(']')
+            i += 1
+        else:
+            j = i
+            while j < len(src) and src[j] not in ' \t\n\r()[];[]':
+                j += 1
+            tokens.append(src[i:j])
+            i = j
+    return tokens
+
+def is_separator(tok: str) -> bool:
+    return len(tok) >= 3 and all(c == '=' for c in tok)
+
+def parse_datatypes(src: str) -> list[DatatypeDef]:
+    src = strip_comments(src)
+    tokens = tokenize(src)
+    defs = []
+    i = 0
+
+    while i < len(tokens):
+        # Look for (datatype name ...)
+        if (tokens[i] == '(' and i + 2 < len(tokens)
+                and tokens[i+1] == 'datatype'):
+            name = tokens[i+2]
+            i += 3
+            dt = DatatypeDef(name=name)
+
+            # Parse rules until closing )
+            while i < len(tokens) and tokens[i] != ')':
+                # Parse premises until separator
+                premises = []
+                while i < len(tokens) and not is_separator(tokens[i]) and tokens[i] != ')':
+                    if tokens[i] == '(':
+                        # Guard: (op arg1 arg2) : verified ;
+                        i += 1  # skip (
+                        op = tokens[i]; i += 1
+                        args = []
+                        while i < len(tokens) and tokens[i] != ')':
+                            args.append(tokens[i]); i += 1
+                        i += 1  # skip )
+                        # expect : verified ;
+                        if (i + 2 < len(tokens) and tokens[i] == ':'
+                                and tokens[i+1] == 'verified' and tokens[i+2] == ';'):
+                            premises.append(GuardCall(op=op, args=args))
+                            i += 3
+                        else:
+                            i += 1  # skip unexpected
+                    elif (i + 2 < len(tokens) and tokens[i+1] == ':'
+                            and tokens[i+3:i+4] == [';'] if i+3 < len(tokens) else False):
+                        # TypedVar: X : type ;
+                        premises.append(TypedVar(var=tokens[i], typ=tokens[i+2]))
+                        i += 4
+                    else:
+                        i += 1  # skip unexpected
+
+                # Skip separator
+                if i < len(tokens) and is_separator(tokens[i]):
+                    i += 1
+
+                # Parse conclusion
+                cvars = []
+                ctype = ''
+                if i < len(tokens) and tokens[i] == '[':
+                    i += 1  # skip [
+                    while i < len(tokens) and tokens[i] != ']':
+                        cvars.append(tokens[i]); i += 1
+                    i += 1  # skip ]
+                    if i + 2 < len(tokens) and tokens[i] == ':':
+                        ctype = tokens[i+1]; i += 2
+                        if i < len(tokens) and tokens[i] == ';':
+                            i += 1
+                elif i < len(tokens) and tokens[i] not in (')', '('):
+                    cvars = [tokens[i]]
+                    i += 1
+                    if i + 1 < len(tokens) and tokens[i] == ':':
+                        ctype = tokens[i+1]; i += 2
+                        if i < len(tokens) and tokens[i] == ';':
+                            i += 1
+
+                if ctype and premises:
+                    dt.rules.append(Rule(
+                        premises=premises,
+                        conclusion_vars=cvars,
+                        conclusion_type=ctype,
+                    ))
+
+            if tokens[i:i+1] == [')']:
+                i += 1
+            defs.append(dt)
+        else:
+            i += 1
+
+    return defs
+
+
+# ---- OCaml Codegen ----
+
+def sanitize(name: str) -> str:
+    return re.sub(r'[^a-zA-Z0-9_]', '_', name)
+
+def ocaml_type(shen_type: str) -> str:
+    mapping = {'number': 'float', 'string': 'string', 'symbol': 'string'}
+    return mapping.get(shen_type, sanitize(shen_type))
+
+def primary_rule(dt: DatatypeDef) -> Rule:
+    """The rule with the most premises — the composite/guarded one."""
+    return max(dt.rules, key=lambda r: len(r.premises))
+
+@dataclass
+class Field:
+    name: str
+    typ: str
+
+OCAML_KEYWORDS = {
+    'and', 'as', 'assert', 'asr', 'begin', 'class', 'constraint', 'do',
+    'done', 'downto', 'else', 'end', 'exception', 'external', 'false',
+    'for', 'fun', 'function', 'functor', 'if', 'in', 'include', 'inherit',
+    'initializer', 'land', 'lazy', 'let', 'lor', 'lsl', 'lsr', 'lxor',
+    'match', 'method', 'mod', 'module', 'mutable', 'new', 'nonrec',
+    'object', 'of', 'open', 'or', 'private', 'rec', 'sig', 'struct',
+    'then', 'to', 'true', 'try', 'type', 'val', 'virtual', 'when',
+    'while', 'with',
+}
+
+def safe_name(name: str) -> str:
+    """Escape OCaml reserved keywords by appending underscore."""
+    n = name.lower()
+    return n + '_' if n in OCAML_KEYWORDS else n
+
+def fields_of(rule: Rule) -> list[Field]:
+    return [
+        Field(name=safe_name(p.var), typ=ocaml_type(p.typ))
+        for p in rule.premises if isinstance(p, TypedVar)
+    ]
+
+def guards_of(rule: Rule) -> list[GuardCall]:
+    return [p for p in rule.premises if isinstance(p, GuardCall)]
+
+def gen_mli(defs: list[DatatypeDef]) -> str:
+    lines = [
+        '(** Auto-generated guard types from specs/core.shen.',
+        '    DO NOT EDIT - regenerate with shengen-ocaml. *)',
+        '',
+    ]
+    for dt in defs:
+        tn = sanitize(dt.name)
+        rule = primary_rule(dt)
+        flds = fields_of(rule)
+
+        lines.append(f'(** {dt.name} *)')
+        lines.append(f'type {tn}')
+
+        # Constructor signature
+        if flds:
+            args = ' -> '.join(f.typ for f in flds)
+        else:
+            args = 'unit'
+        lines.append(f'val make_{tn} : {args} -> ({tn}, string) result')
+
+        # Accessors
+        for f in flds:
+            lines.append(f'val {f.name}_of_{tn} : {tn} -> {f.typ}')
+        lines.append('')
+
+    return '\n'.join(lines) + '\n'
+
+def gen_ml(defs: list[DatatypeDef]) -> str:
+    lines = [
+        '(* Auto-generated guard types from specs/core.shen.',
+        '   DO NOT EDIT - regenerate with shengen-ocaml. *)',
+        '',
+    ]
+    for dt in defs:
+        tn = sanitize(dt.name)
+        rule = primary_rule(dt)
+        flds = fields_of(rule)
+        checks = guards_of(rule)
+
+        # Record type
+        if not flds:
+            lines.append(f'type {tn} = unit')
+        elif len(flds) == 1:
+            lines.append(f'type {tn} = {{ {tn}_v : {flds[0].typ} }}')
+        else:
+            lines.append(f'type {tn} = {{')
+            for f in flds:
+                lines.append(f'  {tn}_{sanitize(f.name)} : {f.typ};')
+            lines.append('}')
+        lines.append('')
+
+        # Constructor
+        params = ' '.join(f.name for f in flds) if flds else '()'
+        lines.append(f'let make_{tn} {params} =')
+
+        # Guard checks
+        for g in checks:
+            op_map = {'>=': '>=', '>': '>', '<=': '<=', '<': '<', '=': '='}
+            ocaml_op = op_map.get(g.op, g.op)
+            lhs = safe_name(g.args[0]) if g.args else '0'
+            rhs = g.args[1] if len(g.args) > 1 else '0'
+            # Float comparison
+            lines.append(f'  if not ({lhs} {ocaml_op} {rhs}.) then')
+            lines.append(f'    Error "{tn}: validation failed: {lhs} {ocaml_op} {rhs}"')
+            lines.append(f'  else')
+
+        # Construct record
+        if not flds:
+            lines.append(f'  Ok ()')
+        elif len(flds) == 1:
+            lines.append(f'  Ok {{ {tn}_v = {flds[0].name} }}')
+        else:
+            lines.append(f'  Ok {{')
+            for f in flds:
+                lines.append(f'    {tn}_{sanitize(f.name)} = {f.name};')
+            lines.append(f'  }}')
+        lines.append('')
+
+        # Accessors
+        for f in flds:
+            if len(flds) == 1:
+                lines.append(f'let {f.name}_of_{tn} t = t.{tn}_v')
+            else:
+                lines.append(f'let {f.name}_of_{tn} t = t.{tn}_{sanitize(f.name)}')
+        lines.append('')
+
+    return '\n'.join(lines) + '\n'
+
+
+# ---- Main ----
+
+def main():
+    if len(sys.argv) < 3:
+        print('Usage: shengen-ocaml <spec.shen> <output-base>', file=sys.stderr)
+        print('  Generates <output-base>.ml and <output-base>.mli', file=sys.stderr)
+        sys.exit(1)
+
+    spec_path = sys.argv[1]
+    output_base = sys.argv[2]
+
+    with open(spec_path) as f:
+        src = f.read()
+
+    defs = parse_datatypes(src)
+    print(f'shengen-ocaml: parsed {len(defs)} datatype definitions from {spec_path}')
+    for dt in defs:
+        print(f'  - {dt.name} ({len(dt.rules)} rules)')
+
+    ml = gen_ml(defs)
+    mli = gen_mli(defs)
+
+    ml_path = output_base + '.ml'
+    mli_path = output_base + '.mli'
+
+    with open(ml_path, 'w') as f:
+        f.write(ml)
+    with open(mli_path, 'w') as f:
+        f.write(mli)
+
+    print(f'shengen-ocaml: wrote {ml_path} and {mli_path}')
+
+if __name__ == '__main__':
+    main()

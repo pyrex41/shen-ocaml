@@ -1,0 +1,6 @@
+(include_subdirs qualified)
+
+(library
+ (name shen)
+ (modules :standard)
+ (libraries unix str shen_guard_types))

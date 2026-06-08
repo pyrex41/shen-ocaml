@@ -1,0 +1,16 @@
+# dune test
+# OCAMLPARAM: unset
+# Shared cache: enabled-except-user-rules
+# Shared cache location: /Users/reuben/.cache/dune/db
+# Workspace root: /Users/reuben/projects/shen/shen-ocaml/shen-ocaml
+# Auto-detected concurrency: 10
+# Dune context:
+#  { name = "default"
+#  ; kind = "default"
+#  ; profile = Dev
+#  ; merlin = true
+#  ; fdo_target_exe = None
+#  ; build_dir = In_build_dir "default"
+#  ; instrument_with = []
+#  }
+$ /nix/store/7idlml26ki8xbjb6v1pp6xn7m6y90g8h-ocaml-5.3.0/bin/ocamlc.opt -config > /tmp/nix-shell.ItzByq/dune_b8c856_output

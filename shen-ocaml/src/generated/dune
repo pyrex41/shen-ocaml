@@ -1,0 +1,6 @@
+(include_subdirs no)
+
+(library
+ (name shen_guard_types)
+ (modules guard_types)
+ (synopsis "Shen pipeline guard types (shengen from specs/core.shen)"))

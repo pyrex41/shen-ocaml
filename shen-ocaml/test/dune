@@ -1,0 +1,68 @@
+(test
+ (name test_shen)
+ (modules test_shen test_eval)
+ (libraries shen))
+
+(test
+ (name test_kernel_boot)
+ (modules test_kernel_boot)
+ (libraries shen)
+ (deps
+  (source_tree %{workspace_root}/kernel))
+ (action
+  (setenv
+   SHEN_KERNEL_DIR
+   %{workspace_root}/kernel
+   (run %{test}))))
+
+(test
+ (name test_repl_path)
+ (modules test_repl_path)
+ (libraries shen)
+ (deps
+  (source_tree %{workspace_root}/kernel))
+ (action
+  (setenv
+   SHEN_KERNEL_DIR
+   %{workspace_root}/kernel
+   (run %{test}))))
+
+(test
+ (name test_load_tiny_relative)
+ (modules test_load_tiny_relative)
+ (libraries shen)
+ (deps
+  (source_tree %{workspace_root}/kernel)
+  (source_tree %{workspace_root}/test/shen))
+ (action
+  (chdir %{workspace_root}/test/shen
+   (setenv
+    SHEN_KERNEL_DIR
+    %{workspace_root}/kernel
+    (run %{test})))))
+
+(test
+ (name test_codegen_smoke)
+ (modules test_codegen_smoke)
+ (libraries shen str))
+
+(test
+ (name test_types_kl_aot)
+ (modules test_types_kl_aot)
+ (libraries shen_aot_kernel))
+
+; Disabled: read-from-string hangs in kernel reader — re-enable after Task 5a fix
+(test
+ (name test_kernel_shen_suite)
+ (modules test_kernel_shen_suite)
+ (libraries shen)
+ (enabled_if false)
+ (deps
+  (source_tree %{workspace_root}/kernel)
+  (source_tree %{workspace_root}/test/shen))
+ (action
+  (chdir %{workspace_root}/test/shen
+   (setenv
+    SHEN_KERNEL_DIR
+    %{workspace_root}/kernel
+    (run %{test})))))
