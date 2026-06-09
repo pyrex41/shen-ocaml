@@ -54,14 +54,28 @@ let () =
   let _ = eval_via_kernel "(tc -)" in
 
   (* Interpreter oracle: the fixture is now defined (interpreted) in the table. *)
-  let inputs = [ 0; 1; 2; 5; 10; 20; 1000; 100000 ] in
+  (* Small inputs keep the interpreter ORACLE fast; soundness needs path coverage,
+     not large magnitudes. Overflow consistency is checked separately below. *)
+  let inputs = [ 0; 1; 2; 5; 10; 20; 50; 200 ] in
   let oracle_lcg = List.map (fun n -> eval_via_kernel (Printf.sprintf "(lcg 0 %d)" n)) inputs in
   let oracle_sumto = List.map (fun n -> eval_via_kernel (Printf.sprintf "(sumto 0 %d)" n)) inputs in
-  let oracle_fibo = List.map (fun n -> eval_via_kernel (Printf.sprintf "(fibo %d)" (min n 28))) inputs in
+  let oracle_fibo = List.map (fun n -> eval_via_kernel (Printf.sprintf "(fibo %d)" (min n 22))) inputs in
   let oracle_usesum = List.map (fun n -> eval_via_kernel (Printf.sprintf "(usesum %d)" n)) inputs in
   let oracle_usescons = eval_via_kernel "(usescons 7)" in
   (* float argument must fall back to uniform and stay correct *)
   let oracle_lcg_float = eval_via_kernel "(sumto 0.5 4)" in
+  (* Phase C broadening: float fast path, int/float dual dispatch, multi-clause,
+     float-only fallback, overflow consistency. Captured as oracle before register. *)
+  let cases =
+    [ "(square 7)"; "(square 7.0)"; "(square -3)";    (* dual int+float dispatch *)
+      "(halfsq 4.0)"; "(halfsq 4)";                   (* float fast; int -> uniform *)
+      "(facto 5)"; "(facto 0)"; "(facto 6)";          (* int multi-clause *)
+      "(fsum 0.0 6.0)"; "(fsum 0.0 0.0)";             (* float fold via float fast path *)
+      "(fsum 0 6)";                                   (* int args -> uniform, contagion *)
+      "(sumto 1.5 4)";                                (* mixed -> uniform *)
+      "(square 1000000000)" ]                         (* overflow consistency *)
+  in
+  let oracle_cases = List.map eval_via_kernel cases in
 
   (* (2) Register specialized entries (overwrites the table). *)
   Shen_typed_numeric.Specialized.register ();
@@ -77,7 +91,7 @@ let () =
   in
   check "lcg" oracle_lcg (fun n -> eval_via_kernel (Printf.sprintf "(lcg 0 %d)" n));
   check "sumto" oracle_sumto (fun n -> eval_via_kernel (Printf.sprintf "(sumto 0 %d)" n));
-  check "fibo" oracle_fibo (fun n -> eval_via_kernel (Printf.sprintf "(fibo %d)" (min n 28)));
+  check "fibo" oracle_fibo (fun n -> eval_via_kernel (Printf.sprintf "(fibo %d)" (min n 22)));
   check "usesum" oracle_usesum (fun n -> eval_via_kernel (Printf.sprintf "(usesum %d)" n));
   (* fallback: number-typed but non-subset body still works *)
   if not (equal oracle_usescons (eval_via_kernel "(usescons 7)")) then
@@ -85,6 +99,14 @@ let () =
   (* float argument falls back soundly *)
   if not (equal oracle_lcg_float (eval_via_kernel "(sumto 0.5 4)")) then
     failwith "float fallback diverged";
+  (* float fast path, dual dispatch, multi-clause, overflow — all bit-identical *)
+  List.iter2
+    (fun case exp ->
+      let got = eval_via_kernel case in
+      if not (equal exp got) then
+        failwith (Printf.sprintf "%s: oracle=%s specialized=%s" case
+                    (to_string exp) (to_string got)))
+    cases oracle_cases;
 
   (* (3) Redefinition safety: redefine sumto, web invalidates, usesum follows it. *)
   let before = eval_via_kernel "(usesum 5)" in

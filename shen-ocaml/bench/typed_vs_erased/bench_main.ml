@@ -69,9 +69,9 @@ let () =
 
   (* erased baseline: register the uniform (tagged) closures so recursion stays
      uniform (no fast path in the table). *)
-  Env.set_fn "lcg" Sp.uniform_sp_lcg_;
-  Env.set_fn "sumto" Sp.uniform_sp_sumto_;
-  Env.set_fn "fibo" Sp.uniform_sp_fibo_;
+  Env.set_fn "lcg" Sp.uniform_sp_int_lcg_;
+  Env.set_fn "sumto" Sp.uniform_sp_int_sumto_;
+  Env.set_fn "fibo" Sp.uniform_sp_int_fibo_;
   let erased_lcg = bench (fun () -> call "lcg" [ 0; n ]) in
   let erased_sumto = bench (fun () -> call "sumto" [ 0; n ]) in
   let erased_fibo = bench ~iters:5 (fun () -> call "fibo" [ 32 ]) in
@@ -82,17 +82,33 @@ let () =
   let it_fibo_t = bench ~iters:5 (fun () -> it_fibo (Int 32)) in
 
   (* consumed: specialized unboxed entries (direct calls, no wrapper/table). *)
-  let consumed_lcg = bench (fun () -> Sp.sp_lcg_ 0 n) in
-  let consumed_sumto = bench (fun () -> Sp.sp_sumto_ 0 n) in
-  let consumed_fibo = bench ~iters:5 (fun () -> Sp.sp_fibo_ 32) in
+  let consumed_lcg = bench (fun () -> Sp.sp_int_lcg_ 0 n) in
+  let consumed_sumto = bench (fun () -> Sp.sp_int_sumto_ 0 n) in
+  let consumed_fibo = bench ~iters:5 (fun () -> Sp.sp_int_fibo_ 32) in
 
   (* sanity: same result every way *)
-  (match (call "lcg" [ 0; 1000 ], it_lcg (Int 0) (Int 1000), Sp.sp_lcg_ 0 1000) with
+  (match (call "lcg" [ 0; 1000 ], it_lcg (Int 0) (Int 1000), Sp.sp_int_lcg_ 0 1000) with
    | Int a, Int b, c when a = b && b = c -> () | _ -> failwith "lcg mismatch");
 
   Printf.printf "workload: lcg/sumto N=%d, fibo 32 (apt OCaml 4.14, no flambda)\n\n" n;
   report "lcg (loop-carried)" consumed_lcg it_lcg_t erased_lcg;
   report "loopsum (sumto)" consumed_sumto it_sumto_t erased_sumto;
   report "fibo 32 (tree rec)" consumed_fibo it_fibo_t erased_fibo;
+
+  (* FLOAT workload (Phase C broadening): a float fold via the unboxed float entry
+     vs an inlined-tagged Float baseline. *)
+  let rec it_fsum (acc : value) (k : value) =
+    match (acc, k) with
+    | Float a, Float kk -> if kk = 0. then Float a else it_fsum (Float (a +. kk)) (Float (kk -. 1.))
+    | _ -> failwith "it_fsum" in
+  let fn = 5_000_000 in
+  let consumed_fsum = bench (fun () -> Sp.sp_flt_fsum_ 0. (float_of_int fn)) in
+  let it_fsum_t = bench (fun () -> it_fsum (Float 0.) (Float (float_of_int fn))) in
+  Env.set_fn "fsum" Sp.uniform_sp_int_fsum_;
+  let erased_fsum =
+    bench (fun () -> E.apply_value (Sym "fsum") [ Float 0.; Float (float_of_int fn) ]) in
+  Printf.printf "\nfloat workload: sumto (float) N=%d\n" fn;
+  report "fsum (float fold)" consumed_fsum it_fsum_t erased_fsum;
+
   Printf.printf
     "\n(unboxed vs inlined-tagged = the honest 'dropping tags' win; vs uniform =\n end-to-end incl. table dispatch + currying + boxing. fibo is non-tail.)\n"

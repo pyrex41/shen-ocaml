@@ -30,3 +30,29 @@
 (define usescons
   { number --> number }
   N -> (hd (cons N N)))
+
+\\ Works in BOTH the int and float subsets: gets two unboxed entries; the wrapper
+\\ picks by argument type. Tests int/float dual dispatch.
+(define square
+  { number --> number }
+  X -> (* X X))
+
+\\ Float-only: the 0.5 literal is rejected by the int subset, so only a float fast
+\\ path is emitted; integer args fall back to uniform (correct contagion).
+(define halfsq
+  { number --> number }
+  X -> (* (* X X) 0.5))
+
+\\ Multi-clause with an INT literal base case -> lowered to an if-chain. INT-only
+\\ (the int literal 0 is structural; the interpreter does not terminate on float
+\\ args, so it is correctly NOT float-specialized).
+(define facto
+  { number --> number }
+  0 -> 1
+  N -> (* N (facto (- N 1))))
+
+\\ Float-only loop-carried fold (float literals 0.0/1.0 -> the interpreter compares
+\\ float-to-float and terminates; no int literals so the int subset rejects it).
+(define fsum
+  { number --> number --> number }
+  Acc N -> (if (= N 0.0) Acc (fsum (+ Acc N) (- N 1.0))))
