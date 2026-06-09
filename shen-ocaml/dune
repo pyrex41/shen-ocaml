@@ -1,0 +1,9 @@
+; Opt-in optimizing profile for benchmarking on a flambda compiler. -O3 etc.
+; REQUIRE flambda and error on a non-flambda toolchain, so this profile is never
+; the default. On a flambda 5.3 host: `dune build --profile flambda` (see
+; FLAMBDA.md). The default dev/release builds are unaffected and build on the apt
+; 4.14 (non-flambda) sandbox.
+(env
+ (flambda
+  (ocamlopt_flags
+   (:standard -O3 -inline 1000 -unsafe))))

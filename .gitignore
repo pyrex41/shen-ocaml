@@ -21,3 +21,4 @@ _opam/
 
 # OS / editor cruft
 .DS_Store
+.claude/worktrees/
