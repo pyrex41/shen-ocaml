@@ -28,10 +28,26 @@ uniform `value` entry.
 - **Demonstration**: `bench/typed_vs_erased/README.md` shows the source, the
   signature, the generated OCaml for *both* entry points, and the ladder.
 
-v1 scope (narrow by design): single-clause `number`-mono int functions. Out of
-scope (recorded in the plan): floats/`/`, polymorphic + list/vector specialization,
-cross-module specialization, JIT, and devirtualizing the uniform path. The kernel
-suite (134/0) is untyped KL, so specialization does nothing there — expected.
+Now covers: **int and float** unboxed entries (a function with a `number` sig gets
+both where its body fits each subset; the wrapper dispatches all-`Int`→int,
+all-`Float`→float, else uniform); **multi-clause** numeric defines (literal base
+cases lowered to an `if`-chain). `/` is excluded from both subsets (it returns a
+float / errors on a zero divisor — OCaml `/.` would diverge). Int literals are
+rejected in the float subset for soundness (the interpreter compares them
+structurally, so a float body must use float literals).
+
+Out of scope (recorded in the plan): polymorphic + list/vector specialization,
+cross-module specialization, JIT, `/`. The kernel suite (134/0) is untyped KL, so
+specialization does nothing there — expected.
+
+### Flambda (env-blocked) + reproduction infra
+
+The tag-erasure win measured here (~1.4–2.0× over inlined-tagged) is a **non-flambda
+floor** — the apt 4.14 sandbox has no flambda and can't install one (no nix/opam).
+An opt-in `flambda` dune profile (`-O3 -inline 1000 -unsafe`, never default),
+`scripts/bench_flambda.sh`, and `FLAMBDA.md` set up exact reproduction of the
+canonical numbers on a flambda 5.3 host. No flambda figures are quoted here
+because none were measured (see FLAMBDA.md).
 
 ## AOT backend (Phase B) — kernel compiled to native OCaml
 
@@ -55,9 +71,14 @@ through the function table for redefinition safety and free interop.
   mutual recursion, let/and/or/cond/lambda/trap-error, partial application, and
   200k-deep tail recursion. `test_aot_kernel_boot` smoke-checks the AOT kernel.
 
-Not yet done in Phase B: direct-call devirtualization within a unit (calls go
-through the table for now), AOT-compiling the giant type-checker defuns (gated to
-the interpreter), and a flatter codegen so those compile without the node gate.
+**Self-recursion devirtualization** (Phase B polish): a `defun`'s saturated
+self-call compiles to a direct OCaml `let rec` call instead of going through the
+function table — sound without any invalidation flag (self-reference is lexical;
+redefinition swaps the table entry, which a running invocation doesn't consult)
+and verified at 134/0 in AOT mode. Still through the table: mutual recursion and
+non-self global calls. Not yet done in Phase B: mutual-recursion devirtualization
+(needs `let rec` groups + per-web invalidation), AOT-compiling the giant
+type-checker defuns (gated to the interpreter), flatter codegen.
 
 ## Kernel conformance (Phase A)
 

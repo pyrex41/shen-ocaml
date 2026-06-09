@@ -308,3 +308,31 @@ devirtualizing the uniform path (direct intra-unit calls). Also: the tag-erasure
 headline needs the canonical flambda 5.3 toolchain to reach the thesis's ~10×, and
 a vs-shen-cl/SBCL comparison needs shen-cl installed — both blocked in the apt
 sandbox; re-run there.
+
+### Task 10: Phase B/C follow-ups (three parallel streams) — done
+
+Driven directly (the worktree-isolated parallel agents branched from `main`, not
+this feature branch, so they lacked the Phase A–C files; cleaner to do here).
+
+1. **Float + multi-clause specialization** (`ocaml_specialize.ml`): numeric-kind
+   parameterized (int|float). Float entries (`+. -. *.`, comparisons, no `/`),
+   int literals rejected in the float subset for soundness, dual int/float
+   dispatch in the wrapper. Multi-clause literal/variable patterns lowered to an
+   `if`-chain (total final clause required). Soundness test extended (float, dual,
+   multi-clause, overflow, fallback) — bit-identical to the interpreter.
+   Also fixed `Ast.to_string` to render floats reader-safely (`string_of_float 0.0`
+   = `"0."`, which the reader parses as int 0 — broke a `(= x 0.0)` round-trip).
+2. **Self-recursion devirtualization** (`ocaml_compile.ml`): saturated self-calls
+   → direct OCaml `let rec` calls (no table lookup / currying), unconditionally
+   sound (lexical self-reference; redefinition swaps the table entry). 134/0 in
+   AOT mode; redefinition-safety regression in `test_aot_fixture`. Mutual-recursion
+   devirt across a file is future work.
+3. **Flambda infra** (`dune` env profile, `scripts/bench_flambda.sh`, `FLAMBDA.md`):
+   opt-in optimizing profile + reproduction recipe for a flambda 5.3 host. The
+   actual flambda re-measurement is env-blocked here (no nix/opam/flambda); no
+   flambda numbers are invented.
+
+**Still open / future:** mutual-recursion devirtualization; flatter AOT codegen so
+the giant type-checker defuns compile (vs interpreter fallback); polymorphic /
+list-vector specialization; the flambda 5.3 and vs-shen-cl/SBCL measurements
+(both need toolchains unavailable in this sandbox).

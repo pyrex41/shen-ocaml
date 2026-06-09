@@ -17,7 +17,20 @@ AOT-compiled module and running `shen.initialise`.
 | interpreted | 117.5ms | 123.3ms | 124.1ms |
 | AOT         |  22.8ms |  24.6ms |  24.7ms |
 
-**Median speedup: 5.0×.** (7 runs each; process start → `Kernel ready`.)
+**Median speedup: 5.0×.** (7 runs each; process start → `Kernel ready`.) With
+self-recursion devirtualization (below) the AOT boot is ~21.9ms; boot is not
+self-recursion-bound, so the change there is small.
+
+### Self-recursion devirtualization (Phase B polish)
+
+The AOT compiler turns a `defun`'s saturated self-call into a direct OCaml call
+to a local `let rec` entry instead of `apply_value (Sym name)` — eliminating the
+function-table hashtable lookup + currying on every self-call (the per-call cost
+the "uniform" column above pays, 77–257×). It is unconditionally sound for
+self-recursion (a self-reference is lexical; redefinition swaps the table entry,
+which a running invocation does not consult) and verified at **134/0 in AOT
+mode**. Mutual-recursion devirtualization across a file is future work. Flambda
+would compound this (inlining the now-direct recursive calls) — see FLAMBDA.md.
 
 Reproduce:
 
@@ -55,11 +68,16 @@ tags) vs **ignored**. Three reference points, reported honestly:
 
 Run: `dune exec bench/typed_vs_erased/bench_main.exe` (apt OCaml 4.14, no flambda).
 
-| workload (N=10M, fib 32) | unboxed | inlined-tagged | uniform |
-|--------------------------|---------|----------------|---------|
-| lcg (loop-carried)       | 12.2ms  | 21.3ms (1.8×)  | 2972ms (245×) |
-| loopsum (sumto)          |  9.4ms  | 18.4ms (2.0×)  | 2452ms (261×) |
-| fibo 32 (tree recursion) | 11.3ms  | 15.9ms (1.4×)  | 1429ms (127×) |
+| workload (N=10M, fib 32)     | unboxed | inlined-tagged | uniform |
+|------------------------------|---------|----------------|---------|
+| lcg (loop-carried, int)      | 13.6ms  | 14.2ms (1.0×)  | 2971ms (218×) |
+| loopsum (sumto, int)         |  9.2ms  | 14.2ms (1.5×)  | 2369ms (257×) |
+| fibo 32 (tree recursion, int)| 10.1ms  | 13.8ms (1.4×)  | 1467ms (145×) |
+| fsum (loop-carried, float)   | 15.8ms  | 16.0ms (1.0×)  | 1212ms ( 77×) |
+
+(Run-to-run the unboxed/inlined-tagged ratio is noisy at 1.0–2.0× because the
+unboxed times are ~10ms; the float row sits at ~1.0× because, without flambda,
+boxing a `Float` costs about the same as the unboxed loop body.)
 
 **Honest reading.** Dropping tags buys **~1.4–2.0×** here (avoiding a per-iteration
 `Int` heap box). That is **below** the order-of-10× the thesis targets — because the
