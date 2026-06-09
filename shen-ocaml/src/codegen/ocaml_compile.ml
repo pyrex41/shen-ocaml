@@ -49,6 +49,16 @@ let mangle_var name =
 let counter = ref 0
 let fresh () = incr counter; "__t" ^ string_of_int !counter
 
+(* While compiling one defun body, the (kl-name, arity, ocaml-rec-name) of the
+   function being compiled. A *saturated* call to itself compiles to a direct
+   OCaml call to the local [let rec] entry instead of [apply_value (Sym name)] —
+   skipping the table lookup and currying. This is unconditionally sound: a
+   self-reference is lexical within the function's own body, and runtime
+   redefinition only swaps the table entry (a running invocation keeps using its
+   own body), so no invalidation flag is needed. Under-saturated self-calls
+   (partial application) still go through the table. *)
+let current_self : (string * int * string) option ref = ref None
+
 (** Node count of a KL expression — a proxy for the OCaml AST depth the native
     compiler must recurse over. Giant kernel defuns (e.g. [shen.use-type-info],
     the type-checker monsters) compile to expressions deep enough to overflow
@@ -196,10 +206,23 @@ and compile_app locals f args =
       bindings := (t, compile locals e) :: !bindings;
       t)
   in
-  let callee = operand f in
-  let arg_ts = List.map operand args in
+  (* Saturated self-call → direct call to the local [let rec] entry. *)
+  let self_direct =
+    match (f, !current_self) with
+    | KLSym name, Some (sname, sarity, raw)
+      when name = sname && (not (SS.mem name locals)) && List.length args = sarity ->
+        Some raw
+    | _ -> None
+  in
   let core =
-    Printf.sprintf "E.apply_value %s [%s]" callee (String.concat "; " arg_ts)
+    match self_direct with
+    | Some raw ->
+        let arg_ts = List.map operand args in
+        Printf.sprintf "%s %s" raw (String.concat " " arg_ts)
+    | None ->
+        let callee = operand f in
+        let arg_ts = List.map operand args in
+        Printf.sprintf "E.apply_value %s [%s]" callee (String.concat "; " arg_ts)
   in
   List.fold_left
     (fun acc (t, e) -> Printf.sprintf "(let %s = %s in %s)" t (paren e) acc)
@@ -223,11 +246,28 @@ and compile_closure params body =
 
 and paren s = "(" ^ s ^ ")"
 
-(** Emit a registration statement for a top-level [defun] (mirrors [Eval]'s KLDefun). *)
+(** Emit a registration statement for a top-level [defun] (mirrors [Eval]'s KLDefun).
+    For [arity > 0] the body is compiled into a local [let rec] entry so saturated
+    self-calls become direct OCaml calls (no table lookup / currying); the curried
+    [make_closure] wrapper around it preserves partial-application semantics. *)
 let compile_toplevel_defun ~b name params body =
-  Printf.bprintf b
-    "  (let c = %s in\n   Env.set_fn %s c; Env.register_fn_metadata %s %d c);\n"
-    (compile_closure params body) (esc name) (esc name) (List.length params)
+  let arity = List.length params in
+  if arity = 0 then
+    Printf.bprintf b
+      "  (let c = %s in Env.set_fn %s c; Env.register_fn_metadata %s %d c);\n"
+      (compile_closure params body) (esc name) (esc name) arity
+  else begin
+    let raw = fresh () ^ "_self" in
+    let locals = List.fold_left (fun s p -> SS.add p s) SS.empty params in
+    let mp = List.map mangle_var params in
+    current_self := Some (name, arity, raw);
+    let body_src = compile locals body in
+    current_self := None;
+    Printf.bprintf b
+      "  (let rec %s %s = %s in\n   let c = mkcl %d (function [%s] -> %s %s | _ -> Error \"arity\") in\n   Env.set_fn %s c; Env.register_fn_metadata %s %d c);\n"
+      raw (String.concat " " mp) body_src arity (String.concat "; " mp) raw
+      (String.concat " " mp) (esc name) (esc name) arity
+  end
 
 let emit_preamble b =
   Buffer.add_string b "(* @generated — do not edit by hand. *)\n\n";

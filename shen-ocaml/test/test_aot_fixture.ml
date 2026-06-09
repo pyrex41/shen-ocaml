@@ -69,4 +69,12 @@ let () =
   (match eval_one "((fixt-sumto 0) 100)" with
   | Int 5050 -> ()
   | v -> failwith ("partial fixt-sumto (aot) = " ^ to_string v));
+  (* Devirtualized self-recursion must not block runtime redefinition: the AOT
+     [fixt-fact] self-calls a local [let rec], but redefining it via [defun] swaps
+     the table entry and new calls must use the new definition (a running
+     invocation keeps its own body, so no invalidation is needed). *)
+  let _ = eval_one "(defun fixt-fact (N) 999)" in
+  (match eval_one "(fixt-fact 10)" with
+  | Int 999 -> ()
+  | v -> failwith ("redefined fixt-fact should be 999, got " ^ to_string v));
   print_endline "  AOT == interpreter on all fixture cases."
