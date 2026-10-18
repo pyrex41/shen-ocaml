@@ -80,19 +80,6 @@ let parse_string inp =
       let rec loop () =
         match peek inp with
         | Some '"' -> advance inp; ()
-        | Some '\\' -> 
-            advance inp;
-            (match peek inp with
-             | Some c -> 
-                 Buffer.add_char buf (match c with
-                   | 'n' -> '\n'
-                   | 't' -> '\t'
-                   | 'r' -> '\r'
-                   | '"' -> '"'
-                   | _ -> c);
-                 advance inp;
-                 loop ()
-             | None -> raise (Parse_error "unterminated string"))
         | Some c -> Buffer.add_char buf c; advance inp; loop ()
         | None -> raise (Parse_error "unterminated string")
       in
@@ -114,7 +101,7 @@ let rec parse_expr inp =
         | Some _ ->
             let e = parse_expr inp in
             parse_list (e :: acc)
-        | None -> raise (Parse_error "unterminated list")
+        | None -> parse_err inp "unterminated list"
       in
       let items = parse_list [] in
       (match items with
