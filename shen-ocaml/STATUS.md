@@ -2,13 +2,13 @@
 
 ## What Works
 
-- **Kernel boot**: All 21 .kl files from ShenOSKernel-41.1 load and evaluate successfully
+- **Kernel boot**: All 24 .kl files from ShenOSKernel-43.1 load and evaluate successfully
 - **`shen.initialise`** runs without errors
 - **Post-boot metadata**: All 45 registered primitives plus native `hash` have arity + `shen.lambda-form` registered in the property vector
 - **REPL**: Real Shen REPL with balanced parenthesis input, routed through kernel `eval`
 - **Verified expressions** (via kernel eval path, not just eval-kl):
   - `(+ 1 1)` → `2`
-  - `(value *version*)` → `"41.1"`
+  - `(value *version*)` → `"43.1"`
   - `(cons 1 (cons 2 ()))` → `(1 2)`
   - `(hd (cons 1 2))` → `1`
   - `(let X 5 (+ X 1))` → `6`
@@ -20,7 +20,7 @@
 - **Partial application**: Under-application returns new closure, over-application chains
 - **Native overwrites**: `=`, `+`, `*`, `-` have optimized hot-path implementations
 - **Parser**: Full s-expression parser for .kl files
-- **AOT data embedding**: All 21 kernel files can be pre-parsed to OCaml AST literals
+- **AOT data embedding**: All 24 kernel files can be pre-parsed to OCaml AST literals
 - **Shen backpressure**: specs/core.shen (14 types) → shengen-ocaml → guard_types.{ml,mli} → library `shen_guard_types`, witness `Runtime.Guard_types_link`, depended on by `Interp.Boot` (Gate 2)
 - **Build**: `dune build`, `dune test`, all 4 backpressure gates pass
 - **Nix**: Reproducible dev environment via flake.nix (OCaml 5.3.0, dune 3.20.2)
@@ -35,7 +35,7 @@
 - **IR tail annotations**: `ir.ml` annotates tail positions but no backend consumes them
 - **Symbol interning in values**: `Sym of string` uses string equality, not interned IDs
 - **Native vs shen-cl `overwrite.lsp`**: Not yet compared (reference tree not in this workspace)
-- **Kernel test suite**: Not yet run (`kerneltests.shen` from ShenOSKernel-41.1)
+- **Kernel test suite**: Not yet run (`kerneltests.shen` from ShenOSKernel-43.1)
 ## Code Sizes
 
 | File | Lines | Purpose |

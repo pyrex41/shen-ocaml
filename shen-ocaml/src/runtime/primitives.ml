@@ -263,6 +263,17 @@ let pr_read_byte = make_closure 1 (function
   | _ -> Error "read-byte: input stream expected"
 )
 
+(* ShenOSKernel 43.1 uses the public character-stream hooks. OCaml's port
+   currently exposes byte streams, so the capability is false and the
+   character operations remain callable with an explicit error. *)
+let pr_char_stream = make_closure 1 (fun _ -> Bool false)
+
+let pr_read_unit_string = make_closure 1 (fun _ ->
+  Error "read-unit-string: character streams unsupported")
+
+let pr_write_string = make_closure 2 (fun _ ->
+  Error "write-string: character streams unsupported")
+
 let pr_write_byte = make_closure 2 (function
   | [Int b; Stream (Out_chan ch)] ->
       if b < 0 || b > 255 then Error "write-byte: byte 0..255 expected"
@@ -379,6 +390,9 @@ let primitive_metadata_entries : (string * int) list =
     ("open", 2);
     ("close", 1);
     ("read-byte", 1);
+    ("char-stream?", 1);
+    ("read-unit-string", 1);
+    ("write-string", 2);
     ("write-byte", 2);
     ("get-time", 1);
     ("type", 1);
@@ -478,6 +492,9 @@ let initialise () =
   register "open" pr_open;
   register "close" pr_close;
   register "read-byte" pr_read_byte;
+  register "char-stream?" pr_char_stream;
+  register "read-unit-string" pr_read_unit_string;
+  register "write-string" pr_write_string;
   register "write-byte" pr_write_byte;
   register "get-time" pr_get_time;
   register "type" pr_type;

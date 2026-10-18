@@ -33,6 +33,9 @@ klfiles=(
   extension-features.kl
   extension-expand-dynamic.kl
   extension-launcher.kl
+  extension-programmable-pattern-matching.kl
+  extension-namespaces.kl
+  extension-type-annotations.kl
   yacc.kl
 )
 for base in "${klfiles[@]}"; do

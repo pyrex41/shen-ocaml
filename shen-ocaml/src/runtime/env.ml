@@ -47,7 +47,7 @@ let eval_kl_from_value_hook v = !eval_kl_from_value_ref v
 
 (* Initialize some globals *)
 let _ =
-  set_global "*version*" (Str "41.1-ocaml");
+  set_global "*version*" (Str "43.1-ocaml");
   set_global "*language*" (Str "OCaml");
   set_global "*implementation*" (Str "shen-ocaml");
   set_global "*tc*" (Bool false)
