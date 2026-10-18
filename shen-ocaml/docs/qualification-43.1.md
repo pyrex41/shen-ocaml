@@ -42,13 +42,18 @@ results were:
 (external shen)                   => external symbol list
 (type (stinput))                  => <stream>
 (let D (shen.dict 10) ... )       => (true 3 7 "num" "pair")
+(42 then 42.0 lookup)             => distinct-key miss; count remains 1
+(same key 42 replacement)         => count 1, value "b"
+(0.0 then -0.0 lookup)             => "zero"
 ```
 
 The dictionary probe stores and reads a symbol key (`foo`), numeric key (`42`),
 and structural cons key (`(cons bar 1)`), then reports `shen.dict?`, count, and
-all three values. The public probes cover the 43.1 stream surface, callable
-metadata, package membership, external package membership, stream type, and
-dictionary behavior.
+all three values. The regression test also confirms that distinct `Int` and
+`Float` keys remain distinct, equal keys replace in place, structural keys
+preserve that distinction recursively, and signed zero remains reachable.
+The public probes cover the 43.1 stream surface, callable metadata, package
+membership, external package membership, stream type, and dictionary behavior.
 
 ## Canonical suite boundary
 

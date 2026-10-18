@@ -52,6 +52,27 @@ let () =
   | v ->
       failwith
         ("kernel eval (cons 1 ()): expected cons with hd 1, got " ^ to_string v));
+  (* Dictionary hashing must follow Shen equality for mixed numeric and
+     structural keys, while treating signed zero as equal. *)
+  (match
+     eval_via_kernel
+       {|(let D (shen.dict 10) (do (shen.dict-> D 42 "int") (cons (shen.dict-count D) (cons (shen.<-dict D 42) (cons (trap-error (shen.<-dict D 42.0) (lambda E (error-to-string E))) ())))))|}
+   with
+  | Cons (Int 1, Cons (Str "int", Cons (Str msg, Nil)))
+    when String.length msg > 0 -> ()
+  | v -> failwith ("mixed numeric dictionary key regression: " ^ to_string v));
+  (match
+     eval_via_kernel
+       {|(let D (shen.dict 10) (do (shen.dict-> D 42 "a") (shen.dict-> D 42 "b") (cons (shen.dict-count D) (shen.<-dict D 42))))|}
+   with
+  | Cons (Int 1, Str "b") -> ()
+  | v -> failwith ("equal dictionary key replacement regression: " ^ to_string v));
+  (match
+     eval_via_kernel
+       {|(let D (shen.dict 10) (do (shen.dict-> D 0.0 "zero") (shen.<-dict D -0.0)))|}
+   with
+  | Str "zero" -> ()
+  | v -> failwith ("signed-zero dictionary key regression: " ^ to_string v));
   (* Task 5a: nested read-from-string must complete through kernel eval (same
      path as typing [(read-from-string "(+ 1 1)")] at the REPL). *)
   (match
