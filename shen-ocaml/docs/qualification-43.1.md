@@ -19,7 +19,7 @@ release archive has 23 KLambda files; `compiler.kl` is a separate CL-specific
 backend and is intentionally excluded from this port's boot and generation
 lists. The generated top-level form counts were: `core` 68, `toplevel` 17, `sys` 119, `reader` 137,
 `prolog` 97, `load` 16, `writer` 28, `macros` 32, `declarations` 12,
-`types` 6, `t-star` 51, `sequent` 50, `track` 29, `dict` 16, `compiler` 52,
+`types` 6, `t-star` 51, `sequent` 50, `track` 29, and `dict` 16,
 `stlib` 326, `init` 4, `extension-features` 5,
 `extension-expand-dynamic` 11, `extension-launcher` 13,
 `extension-programmable-pattern-matching` 17, `extension-namespaces` 12,
