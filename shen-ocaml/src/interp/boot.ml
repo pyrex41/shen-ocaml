@@ -27,7 +27,6 @@ let kernel_files =
     "sequent.kl";
     "track.kl";
     "dict.kl";
-    "compiler.kl";
     "stlib.kl";
     "init.kl";
     "extension-features.kl";

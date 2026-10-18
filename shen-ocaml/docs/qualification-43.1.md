@@ -14,8 +14,10 @@ Runs used the pinned Nix development shell with OCaml 5.3.0 and Dune 3.20.2:
 ```
 
 The build completed with exit 0. Symbol, parser, interpreter, and codegen
-tests passed. The AOT compiler generated all 24 kernel modules. The generated
-top-level form counts were: `core` 68, `toplevel` 17, `sys` 119, `reader` 137,
+tests passed. The AOT compiler generated all 23 official kernel modules. The
+release archive has 23 KLambda files; `compiler.kl` is a separate CL-specific
+backend and is intentionally excluded from this port's boot and generation
+lists. The generated top-level form counts were: `core` 68, `toplevel` 17, `sys` 119, `reader` 137,
 `prolog` 97, `load` 16, `writer` 28, `macros` 32, `declarations` 12,
 `types` 6, `t-star` 51, `sequent` 50, `track` 29, `dict` 16, `compiler` 52,
 `stlib` 326, `init` 4, `extension-features` 5,
@@ -49,9 +51,13 @@ results were:
 
 The dictionary probe stores and reads a symbol key (`foo`), numeric key (`42`),
 and structural cons key (`(cons bar 1)`), then reports `shen.dict?`, count, and
-all three values. The regression test also confirms that distinct `Int` and
-`Float` keys remain distinct, equal keys replace in place, structural keys
-preserve that distinction recursively, and signed zero remains reachable.
+all three values. The regression test records the current port equality
+contract: distinct `Int` and `Float` keys remain distinct, equal keys replace
+in place, structural keys preserve that distinction recursively, and signed
+zero remains reachable. This is an unqualified compatibility gap versus Shen
+ports whose portable numeric equality treats `1` and `1.0` as equal; it is not
+a general Shen conformance claim or a numeric redesign in this version
+upgrade.
 The public probes cover the 43.1 stream surface, callable metadata, package
 membership, external package membership, stream type, and dictionary behavior.
 

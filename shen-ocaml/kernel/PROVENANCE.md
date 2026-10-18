@@ -1,7 +1,9 @@
 # Kernel provenance
 
-The KLambda files in this directory are the ShenOSKernel 43.1 release
-artifact, adopted wholesale for the OCaml port.
+The 23 release KLambda files in this directory are the ShenOSKernel 43.1
+release artifact. The release archive does not contain `compiler.kl`; that
+CL-specific backend was removed from the OCaml port's kernel and generation
+lists.
 
 - Release tag: `shen-43.1`
 - Release commit: `715824a52b55e9c81a9501df8548ff3edd8411f5`

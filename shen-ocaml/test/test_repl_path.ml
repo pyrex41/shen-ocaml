@@ -52,8 +52,8 @@ let () =
   | v ->
       failwith
         ("kernel eval (cons 1 ()): expected cons with hd 1, got " ^ to_string v));
-  (* Dictionary hashing must follow the current port equality for numeric and
-     structural keys, while treating signed zero as equal. *)
+  (* Current port equality contract: mixed numeric and structural keys remain
+     distinct, equal keys replace in place, and signed zero stays equal. *)
   (match
      eval_via_kernel
        {|(let D (shen.dict 10) (do (shen.dict-> D 42 "int") (cons (shen.dict-count D) (cons (shen.<-dict D 42) (cons (trap-error (shen.<-dict D 42.0) (lambda E (error-to-string E))) ())))))|}
