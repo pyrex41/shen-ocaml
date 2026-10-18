@@ -68,3 +68,12 @@ initialization and consumed CPU without harness counts.
 This leaves canonical 154-suite qualification UNKNOWN for the existing
 interpreter limitation. The comparison supplies no evidence of a 43.1
 regression; the gate remains opt-in as it was before the upgrade.
+
+## Existing numeric compatibility gap
+
+The current port distinguishes `Int 42` from `Float 42.0`, including inside
+structural keys. This differs from the portable Shen numeric equality expected
+by Bifrost. The hash probes verify internal dictionary consistency; they do
+not qualify the port against that cross-port equality contract. Signed-zero
+lookup and identical-key replacement pass. Full language qualification remains
+UNKNOWN as described above.

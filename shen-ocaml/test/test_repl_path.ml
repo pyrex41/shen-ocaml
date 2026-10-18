@@ -52,7 +52,7 @@ let () =
   | v ->
       failwith
         ("kernel eval (cons 1 ()): expected cons with hd 1, got " ^ to_string v));
-  (* Dictionary hashing must follow Shen equality for mixed numeric and
+  (* Dictionary hashing must follow the current port equality for numeric and
      structural keys, while treating signed zero as equal. *)
   (match
      eval_via_kernel
