@@ -30,18 +30,25 @@ results were:
 
 ```text
 (value *version*)                 => "43.1"
+(version)                         => "43.1"
 (char-stream? (stinput))          => false
 (trap-error (read-unit-string ...) ...) => "read-unit-string: character streams unsupported"
 (trap-error (write-string "x" ...) ...) => "write-string: character streams unsupported"
 (fn +)                            => <closure>
-(arity +)                          => 2
-(package? +)                       => false
+(arity char-stream?)              => 1
+(arity read-unit-string)          => 1
+(arity write-string)              => 2
+(package? shen)                   => true
+(external shen)                   => external symbol list
 (type (stinput))                  => <stream>
-(absvector? (absvector 2))         => true
+(let D (shen.dict 10) ... )       => (true 3 7 "num" "pair")
 ```
 
-These probes cover the 43.1 public stream surface, callable metadata, package
-predicate, stream type, and dictionary/absvector representation.
+The dictionary probe stores and reads a symbol key (`foo`), numeric key (`42`),
+and structural cons key (`(cons bar 1)`), then reports `shen.dict?`, count, and
+all three values. The public probes cover the 43.1 stream surface, callable
+metadata, package membership, external package membership, stream type, and
+dictionary behavior.
 
 ## Canonical suite boundary
 

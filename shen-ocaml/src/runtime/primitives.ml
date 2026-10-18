@@ -438,15 +438,11 @@ let make_native_hash () =
     if r < 0 then r + m else r
   in
   make_closure 2 (function
-    | [Sym s; Int m] when m > 0 ->
-        let h = Hashtbl.hash s in
+    | [value; Int m] when m > 0 ->
+        let h = Hashtbl.hash value in
         let r = pos_mod h m in
         Int (if r = 0 then 1 else r)
-    | [Str s; Int m] when m > 0 ->
-        let h = Hashtbl.hash s in
-        let r = pos_mod h m in
-        Int (if r = 0 then 1 else r)
-    | _ -> Error "hash: symbol/string and positive modulus expected")
+    | _ -> Error "hash: value and positive modulus expected")
 
 let install_native_hash () =
   native_overwrite_quiet "hash" (make_native_hash ())
