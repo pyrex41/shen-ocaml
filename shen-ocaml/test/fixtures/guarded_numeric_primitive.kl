@@ -1,0 +1,5 @@
+(defun + (X Y) 77)
+(defun guarded.shadow (N A)
+  (if (= N 0) A (guarded.shadow (- N 1) (+ A N))))
+(set guarded.shadow-first (guarded.shadow 3 0))
+(defun + (X Y) 88)

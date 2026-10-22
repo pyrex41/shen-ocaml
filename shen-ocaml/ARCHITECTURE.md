@@ -1,139 +1,190 @@
-# Shen-OCaml Architecture
+# Shen-OCaml architecture
 
-## Overview
+## Execution paths
 
-Port of Shen Language (kernel 41.1) to OCaml 5.3. Follows the standard Shen porting approach: implement KL primitives in the host, provide a tree-walking interpreter for `eval-kl`, and bootstrap the full kernel from `.kl` files.
+The default executable uses a **native-code kernel** and a **compiled dynamic
+tier** for `eval-kl`. The legacy tree walker remains a comparison backend, not
+the default execution engine.
 
-Current architecture:
-- **Interpreter-first**: All kernel `.kl` files are loaded and evaluated by a tree-walking interpreter at boot time.
-- **AOT data embedding**: Kernel `.kl` files can be pre-parsed and embedded as OCaml AST literals (via `ocaml_gen.ml`), avoiding file I/O at boot. This is data AOT, not code AOT.
-- **Code AOT** (not yet implemented): Compiling KL to actual OCaml function bodies for native performance.
-
-## Value Representation (`src/runtime/value.ml`)
-
-```ocaml
-type value =
-  | Int of int
-  | Float of float
-  | Str of string
-  | Sym of string       (* symbol name as string *)
-  | Bool of bool
-  | Cons of value * value
-  | Nil
-  | Vec of value array  (* mutable absvector *)
-  | Closure of (value list -> value)
-  | Stream of stream    (* In_chan | Out_chan *)
-  | Error of string     (* for simple-error *)
+```text
+Shen source -> Shen's reader/macros/typechecker/compiler -> KL
+                                                          |
+                             lexical resolution (Kl.Resolved)
+                                         /                \
+                 executable host closures             generated OCaml
+                   (Interp.Compiled)                 (Codegen.Native_gen)
+                          |                                |
+                   interactive eval-kl                  ocamlopt
+                                                          |
+                                               native kernel / KL modules
 ```
 
-Notes:
-- `Sym` stores the symbol name directly as a string (not interned ID). Symbol interning exists in `symbol.ml` but is not integrated into the `Sym` variant — this is a known simplification.
-- `Closure` is a plain function `value list -> value`. Arity is not stored in the closure itself; instead `make_closure` in `primitives.ml` creates a wrapper that checks argument count and handles partial application.
-- Type-dispatched `equal` function avoids polymorphic compare in hot paths.
+`native_kernel/dune` generates and compiles executable bodies for all 23 vendored
+43.1 kernel files. It does **not** embed an AST and interpret it. The old data
+embedding tool remains under `aot_kernel/` for its existing tests.
 
-## Symbol Interning (`src/runtime/symbol.ml`)
+## Resolved IR
 
-- Global intern table: `string -> { name: string; id: int }`
-- Pre-interns common symbols (true, false, +, -, etc.)
-- Currently used for ID-based equality in specific contexts, but `Sym of string` in value.ml means most equality goes through string comparison.
-- Future optimization: switch `Sym` to use interned IDs for O(1) equality everywhere.
+`src/kl/resolved.ml` validates special forms, assigns unique lexical binding IDs,
+distinguishes named from dynamic calls, and computes free variables. Shadowed or
+case-distinct names cannot collide. Compiler-generated OCaml identifiers use IDs,
+not the legacy name mangler.
 
-## Dual Namespaces (`src/runtime/env.ml`)
+Both executable backends explicitly preserve left-to-right effects. Named call
+operands are evaluated in order. Curried dynamic applications also execute each
+intermediate application before evaluating the next operand, matching the Scheme
+reference. Boolean conditions are checked rather than treating non-booleans as
+false. General error-handler expressions are evaluated before the protected body.
 
-Two separate hashtables keyed by string:
-- `fn_table`: function bindings (name → Closure value)
-- `global_table`: global variable bindings (name → value)
+## Native backend
 
-`set`/`value` operate on globals. `set_fn`/`get_fn` operate on functions. These never collide.
+`src/codegen/native_gen.ml` emits OCaml function bodies, lexical closures, native
+conditionals, and tail calls. There is no interpreter fallback for unsupported
+nodes: compilation fails explicitly.
 
-After kernel boot, `register_fn_metadata` stores arity and `shen.lambda-form` in the kernel's property vector for each function. This is required because the kernel's `eval` → `process-applications` rewrites function calls to `(fn name)` form, which looks up `shen.lambda-form`.
+- **Compatible (default):** named calls use stable, mutable function cells.
+  Previously compiled callers observe later native or interpreted redefinitions.
+- **Sealed (explicit):** saturated calls to unit-local functions become direct
+  multi-argument OCaml calls. Selected fixed primitive operations are direct ABI
+  calls as well. These calls construct no argument lists. Duplicate definitions
+  in a sealed unit are rejected.
 
-## Calling Convention and Partial Application
+Self and mutual recursion stay in tail position. Native callable dispatch also
+stays tail-recursive; checks around legacy callables are confined to that boundary.
+Vector literals are allocated outside function bodies and retain their identity.
 
-- All functions are `Closure of (value list -> value)`.
-- `make_closure arity f` creates a closure that:
-  - If called with exactly `arity` args: calls `f` directly
-  - If called with fewer: returns a new closure capturing partial args
-  - If called with more: calls `f`, then applies the result to remaining args
-- No static/dynamic call distinction yet — everything goes through the dynamic path.
-- Direct OCaml calls for AOT-compiled functions is a future optimization.
+The shipped kernel currently uses **compatible** compilation. Sealed microbenchmark
+numbers must not be presented as the speed of ordinary interactive Shen.
 
-## Tail-Call Strategy
+`Codegen.Numeric_loop` adds guarded workers for a narrow integer-closed recursive
+subset in compatible and sealed modes. All input values must be `Int`; floats and other inputs use
+the original boxed native body. Worker arithmetic and recursion keep integers
+unboxed inside the loop. Effectful or unsupported bodies and unit-local primitive
+shadowing prevent specialization. This preserves existing machine-int overflow;
+it does not introduce arbitrary-precision arithmetic or infer that Shen `number`
+means integer. Syntactic handler lambdas lower to direct exception handlers rather
+than allocating callable wrappers and thunks on every successful `trap-error`.
 
-- OCaml handles tail calls natively for direct recursive calls.
-- The interpreter's `eval` is naturally tail-recursive for `if`, `let`, `cond`, `do`.
-- `IR.lower()` in `ir.ml` annotates tail positions but this is not yet consumed by any backend.
-- No trampoline is currently needed — OCaml's TCO handles the common cases.
+Compatible workers also guard installed self-callable identity and every used
+primitive's canonical identity. Redefinitions, stale references and partials
+fall back to the original compatible body. Expected identity refs are published
+before metadata callbacks. Hoisted entry guards assume a single-threaded runtime
+and a proven callback-free worker; this is not concurrent binding invalidation.
 
-## Eval-KL
+## Dynamic backend
 
-- Tree-walking interpreter in `src/interp/eval.ml` (213 lines).
-- `eval : local_env -> kl_expr -> value` with lexical environment threading.
-- Special forms recognized in `eval_app` by symbol name: `defun`, `lambda`, `let`, `if`, `cond`, `freeze`, `thaw`, `trap-error`, `do`, `and`, `or`.
-- The KL parser produces only `KLApp` nodes for lists — special forms are dispatched at eval time, not parse time.
-- `eval-kl` primitive calls back through `eval_kl_from_value_hook` to break the Primitives↔Eval dependency cycle.
+`src/interp/compiled.ml` resolves and compiles a KL expression once to executable
+OCaml closures. Function invocations use indexed array frames; closures capture
+only free lexical bindings. There is no repeated AST matching or string-based
+local-variable lookup during function execution.
 
-## Boot Process (`src/interp/boot.ml`)
+This is not a machine-code JIT. Dynamically loaded user definitions run this tier;
+they are not automatically native OCaml functions. The restricted explicit native
+user-module path below is separate from interactive compilation.
 
-1. `primitives.ml:initialise()` — registers 44 primitives in fn_table.
-2. `boot.ml:set_port_metadata()` — sets `*language*`, `*implementation*`, etc.
-3. Load all 21 kernel `.kl` files via parser + interpreter (order doesn't matter per 41.1 spec, but we use a fixed order matching other ports).
-4. `patch_kernel_hash()` — replaces kernel's `hash` with a native version that avoids integer overflow.
-5. `boot.ml:register_all_metadata()` — registers arity and `shen.lambda-form` for all primitives in the kernel's property vector.
-6. `shen.initialise` — runs the kernel's init function.
-7. Enter REPL via `shen.repl` or process user input.
+## Shared runtime and ABI
 
-The REPL routes user input through the kernel's own `eval` function (not `eval-kl` directly), which runs macroexpansion, `process-applications`, and the full Shen compilation pipeline. This is why `shen.lambda-form` metadata is essential.
+`src/runtime/value.ml` retains safe OCaml variants and the OCaml GC. `Native`
+callables carry explicit remaining arity and specialized entry points; zero-arity
+callables use a lean `Thunk of (unit -> value)` instead of a native record. Legacy
+`Closure` values remain interoperable. `Runtime.Native` implements curry-on-demand,
+overapplication and error propagation. Arity 0–8 saturated calls in both executable
+backends use specialized entry points without argument lists or repeated name
+lookups. Larger arities use a generic list ABI; some primitive adapters still
+construct lists internally. Booleans use shared values. Common list/predicate/hash
+operations have direct entries; vector equality avoids a per-comparison callback
+closure, and scalar hashes avoid structural-hash bookkeeping.
+Dynamic compilation reuses slots only across completed lexical scopes, drops
+unused parameter/local slots without dropping their evaluation effects, and
+specializes one/two captures. Writable invocation frames remain fresh; only proven
+read-only capture snapshots may be shared across calls and reentrancy.
 
-## Primitives (`src/runtime/primitives.ml`)
+Globals and function bindings remain separate. Runtime symbols are still strings;
+integrating the existing symbol intern table is outstanding. Numeric values are
+still OCaml machine integers/floats, not an arbitrary-precision number system.
+Native arithmetic currently inherits the machine-integer overflow limitation.
 
-44 KL primitives registered, organized by category:
-- Arithmetic: `+`, `-`, `*`, `/`, `>`, `<`, `>=`, `<=`
-- Equality: `=` (type-dispatched)
-- Lists: `cons`, `hd`, `tl`, `cons?`
-- Symbols: `intern`, `str`, `symbol?`
-- Strings: `cn`, `pos`, `tlstr`, `n->string`, `string->n`, `string?`
-- Vectors: `absvector`, `<-address`, `address->`, `vector?`
-- Predicates: `number?`, `boolean?`
-- I/O: `open`, `close`, `read-byte`, `write-byte`
-- Control: `if`, `and`, `or` (also special forms in eval)
-- Globals: `set`, `value`
-- Errors: `simple-error`, `error`, `error-to-string`, `trap-error` (special form)
-- Meta: `type`, `eval-kl`, `tc`, `get-time`, `apply`
+Primitive error results are converted to Shen exceptions at the native boundary.
+Unexpected OCaml exceptions are not silently caught as successful Shen values.
+Numeric structural equality and bounded hashing agree across integer/float keys,
+including keys containing lists/vectors and signed zero.
 
-Note: `if`, `and`, `or` exist as both special forms in eval.ml (for short-circuit behavior) and as registered primitives. The eval special form takes precedence.
+## Bootstrap and CLI
 
-## Code Generation (`src/codegen/ocaml_gen.ml`)
+`Interp.Boot.boot_native` selects compiled dynamic `eval-kl` before initialization,
+installs compiled kernel definitions, sets host metadata,
+installs host hashing and `symbol?`, runs `shen.initialise`, and registers primitive
+metadata. Thus bootstrap-generated definitions also use the dynamic compiler.
+Saved `fn` values and partial applications use late-bound function-cell wrappers,
+not snapshots of an installed callable.
 
-Currently emits KL AST as OCaml data literals (not executable code):
-- `emit_expr` converts KL AST nodes to OCaml constructor syntax
-- `mangle` converts Shen symbol names to valid OCaml identifiers (k_ prefix + hex encoding for special chars)
-- `emit_forms_module` wraps parsed .kl forms as a module exporting `forms : kl_expr list`
-- `emit_kernel_bundle` generates all 21 kernel files as a single module
+`bin/native_cli.ml` provides `eval`, `script` and the kernel's actual REPL. Interactive
+stdin EOF unwinds the REPL rather than spinning forever. The old host REPL remains
+available as `shen-ocaml-legacy`.
 
-This "data AOT" path avoids re-parsing .kl files at boot but still interprets them. True "code AOT" (KL → OCaml function bodies) is not yet implemented.
+## Restricted native user modules
 
-## Guard types and the four-gate loop
+`bin/native_build.ml` reads unprocessed source, validates the supported function-only
+function subset, calls non-installing `shen.shen->kl-h`, generates native bodies,
+and invokes `ocamlopt -shared` with argv (no shell interpolation). It does not
+capture/replay `eval-kl` calls or execute function bodies during compilation.
+Custom macro/source-form registries and custom pattern hooks fail closed.
 
-Shen specs in `specs/core.shen` drive **shengen-ocaml**, which emits `src/generated/guard_types.{ml,mli}`. Those modules are compiled as the internal dune library **`shen_guard_types`** (`src/generated/dune`), and the main **`shen`** library depends on it (`src/dune`).
+Modules must be wholly untyped or wholly typed. Typed signatures are limited to
+base scalar, list and arrow types. Checking uses the same normalized bodies as
+translation (`/.` becomes `lambda`; core `cond` becomes `if`), not arbitrary macro
+expansion. A fork-isolated, single-threaded Unix staging child resets custom
+datatype/synonym/signature state and uses built-in declarations/typechecking.
+Only KL and literal type/predicate AST metadata return to the parent; successful
+and failed staging leave host bindings and declaration state unchanged.
 
-`src/runtime/guard_types_link.ml` is a small witness module that calls representative `Shen_guard_types.Guard_types` builders so that if shengen renames or changes signatures, **Gate 2 (`dune build`)** fails at compile time. `Interp.Boot` includes `module _ = Runtime.Guard_types_link` so that witness stays on the kernel boot dependency chain (not only compiled as an orphan module). This closes the backpressure chain from specs through generated OCaml types into the build graph.
+The compiler also generates native signature predicates. Loading checks all
+declaration conflicts before changing the signature table, without calling
+`declare`, `eval-kl`, ambient demodulation or foreign signature closures. Matching
+native-owned types may be reinstalled; foreign/conflicting declarations are
+rejected. This narrow registration path does not implement general declaration
+variancy. Function/metadata installation as a whole is not a transactional loader.
 
-Typical gates (project automation): **shengen** regenerates guard types → **build** → **test** → **shen-check** (typed Shen verification on specs).
+Native plugins register an installation thunk in `Runtime.Native_artifact`.
+Loading invokes that thunk, installs real native functions, and records source
+metadata for `ps`/`userdefs`. Stored KL is metadata, never an execution fallback.
+Content-qualified unit names permit distinct modules in one host. These are
+trusted same-ABI plugins, with explicit include-directory configuration; there is
+no automatic ABI-aware compilation cache or standalone application builder yet.
 
-## Testing
+Supporting general typed applications, programmable patterns, macro staging, packages
+and top-level initialization semantics remains future work, not an interpreter
+fallback hidden behind a native-compilation command.
 
-- `test/test_parser.ml` — parser basics
-- `test/test_symbol.ml` — symbol interning
-- `test/test_eval.ml` — interpreter special forms, primitives, partial application
-- `test/test_repl_path.ml` — integration test with full kernel boot + eval pipeline
-- `test/test_codegen_smoke.ml` — codegen output verification
-- `test/test_types_kl_aot.ml` — AOT kernel bundle compilation proof
+## Explicit post-expansion promotion
 
-## Known Issues and Simplifications
+`bin/native_promote.ml` wraps the ordinary `eval-kl` callback after boot. A
+definition observer reports the exact created callable before metadata callbacks;
+receipts pair that identity with its original post-expansion KL. Nested metadata
+redefinitions cannot associate an outer body with a nested replacement.
 
-- `Sym of string` doesn't use interned IDs — symbol equality is string comparison
-- `Closure` doesn't carry explicit arity — `make_closure` wraps with arity checking
-- IR tail annotations exist but aren't consumed by any backend
-- Guard types use `float` for all numeric fields (shengen limitation); runtime integration beyond the compile-time witness in `guard_types_link.ml` is still minimal
-- Several stub functions remain: `ast.ml:of_value`, `parser.ml:to_value/from_value`
+`Native_gen.compile_factories` generates compatible callable factories, not
+installation actions. Promotion validates all original identities, compiles/loads
+a fresh trusted same-ABI plugin, constructs replacement callables, then checks
+precollected stable cells and publishes preallocated bindings without allocating
+lookups or metadata callbacks. User bodies, source effects and type/arity/source
+metadata are not replayed. Mutable vector literals fail closed to preserve escaped
+literal identity. Compiler failures are explicit; observation/promotion counts are
+available. The host is single-threaded and asynchronous host handlers must not
+mutate bindings during promotion; this is not a concurrent transaction primitive.
+
+`eval-promoted FILE DIR EXPR` and the native-ceiling benchmark expose this explicit
+experiment. Normal execution does not automatically promote. Persistent ABI-aware
+cache validation, promotion thresholds, memory budgets and standalone native
+applications remain future work.
+
+## Verification
+
+- Generated modules are compiled by Dune and executed in tests, in both modes.
+- The shared KL corpus is also executable on pinned upstream `tizoc/shen-scheme`.
+- Canonical tests have an explicit opt-in runner with a hard timeout, saved logs,
+  nonzero failure exit, and totals captured before the suite's final reset.
+- One-million-deep self/mutual calls, redefinition, literal identity, malformed
+  source, CLI evaluation, typed definitions and REPL EOF have regression tests.
+
+The previous design description is retained in `docs/legacy-architecture.md`.

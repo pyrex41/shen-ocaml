@@ -1,0 +1,5 @@
+(defun bench.sum (N A) (if (= N 0) A (bench.sum (- N 1) (+ A N))))
+(defun bench.hof (F N A) (if (= N 0) A (bench.hof F (- N 1) (F A))))
+(defun bench.build (N A) (if (= N 0) A (bench.build (- N 1) (cons N A))))
+(defun bench.length (L A) (if (cons? L) (bench.length (tl L) (+ A 1)) A))
+(defun bench.run-hof () (bench.hof (lambda X (+ X 1)) 20000 0))

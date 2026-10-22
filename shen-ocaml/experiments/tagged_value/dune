@@ -1,0 +1,8 @@
+(executable
+ (name experiment)
+ (modules kind api boxed tagged workloads experiment)
+ (libraries unix))
+
+(rule
+ (alias runtest)
+ (action (run %{exe:experiment.exe} --check)))

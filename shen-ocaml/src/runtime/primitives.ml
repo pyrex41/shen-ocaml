@@ -10,64 +10,48 @@ open Env
 
 (* Curried primitive: fewer args than arity yields a closure collecting the rest. *)
 let make_closure arity f =
-  Closure (fun args0 ->
-    let rec collect gathered need xs =
-      match need, xs with
-      | 0, [] -> f (List.rev gathered)
-      | 0, _ :: _ -> Error "too many arguments"
-      | n, [] -> Closure (fun more -> collect gathered n more)
-      | n, y :: ys -> collect (y :: gathered) (n - 1) ys
-    in
-    collect [] arity args0)
+  let invoke args = Native.checked (f args) in
+  match arity with
+  | 0 -> Native.function0 (fun () -> invoke [])
+  | 1 -> Native.function1 (fun a -> invoke [a])
+  | 2 -> Native.function2 (fun a b -> invoke [a; b])
+  | 3 -> Native.function3 (fun a b c -> invoke [a; b; c])
+  | 4 -> Native.function4 (fun a b c d -> invoke [a; b; c; d])
+  | 5 -> Native.function5 (fun a b c d e -> invoke [a; b; c; d; e])
+  | 6 -> Native.function6 (fun a b c d e f -> invoke [a; b; c; d; e; f])
+  | 7 -> Native.function7 (fun a b c d e f g -> invoke [a; b; c; d; e; f; g])
+  | 8 -> Native.function8 (fun a b c d e f g h -> invoke [a; b; c; d; e; f; g; h])
+  | _ -> Native.function_ arity invoke
 
 (* Primitive implementations *)
-let pr_intern = make_closure 1 (function
-  | [Str s] -> Sym s
-  | _ -> Error "intern: string expected"
+let intern_decimal = Str.regexp "^[0-9]+\\(\\.[0-9]*\\)?\\([eE][+-]?[0-9]+\\)?$"
+
+let pr_intern = Native.function1 (function
+  | Str "true" -> true_value
+  | Str "false" -> false_value
+  | Str s when String.length s > 1 && Str.string_match intern_decimal s 0 ->
+      (match int_of_string_opt s with
+      | Some i -> Int i
+      | None -> (match float_of_string_opt s with
+          | Some f -> Float f
+          | None -> Sym s))
+  | Str s -> Sym s
+  | _ -> raise (User_error "intern: string expected")
 )
 
-let pr_plus = make_closure 2 (function
-  | [Int a; Int b] -> Int (a + b)
-  | [Float a; Float b] -> Float (a +. b)
-  | [Int a; Float b] -> Float (float_of_int a +. b)
-  | [Float a; Int b] -> Float (a +. float_of_int b)
-  | _ -> Error "+: numbers expected"
-)
+let pr_plus = Native.function2 Native.add
 
-let pr_mult = make_closure 2 (function
-  | [Int a; Int b] -> Int (a * b)
-  | [Float a; Float b] -> Float (a *. b)
-  | [Int a; Float b] -> Float (float_of_int a *. b)
-  | [Float a; Int b] -> Float (a *. float_of_int b)
-  | _ -> Error "*: numbers expected"
-)
+let pr_mult = Native.function2 Native.mul
 
-let pr_minus = make_closure 2 (function
-  | [Int a; Int b] -> Int (a - b)
-  | [Float a; Float b] -> Float (a -. b)
-  | [Int a; Float b] -> Float (float_of_int a -. b)
-  | [Float a; Int b] -> Float (a -. float_of_int b)
-  | _ -> Error "-: numbers expected"
-)
+let pr_minus = Native.function2 Native.sub
 
-let pr_set = make_closure 2 (function
-  | [Sym name; v] -> 
-      set_global name v;
-      v
-  | _ -> Error "set: symbol and value expected"
-)
+let pr_set = Native.function2 Native.set
 
-let pr_value = make_closure 1 (function
-  | [Sym name] -> 
-      (match get_global name with
-       | Some v -> v
-       | None -> Error ("unbound value: " ^ name))
-  | _ -> Error "value: symbol expected"
-)
+let pr_value = Native.function1 Native.value
 
-let pr_simple_error = make_closure 1 (function
-  | [Str msg] -> raise (User_error msg)
-  | [Sym s] -> raise (User_error s)
+let pr_simple_error = Native.function1 (function
+  | Str msg -> raise (User_error msg)
+  | Sym s -> raise (User_error s)
   | _ -> raise (User_error "simple-error: string expected")
 )
 
@@ -81,98 +65,51 @@ let pr_tc = make_closure 1 (function
   | _ -> Error "tc: + or - expected"
 )
 
-let pr_equal = make_closure 2 (function
-  | [v1; v2] -> Bool (Value.equal v1 v2)
-  | _ -> Error "=: two arguments expected"
+let pr_equal = Native.function2 Native.eq
+
+let pr_cons = Native.function2 Native.cons
+
+let pr_hd = Native.function1 Native.hd
+
+let pr_tl = Native.function1 Native.tl
+
+let pr_numberp = Native.function1 (function
+  | Int _ | Float _ -> true_value
+  | _ -> false_value
 )
 
-let pr_cons = make_closure 2 (function
-  | [h; t] -> Cons (h, t)
-  | _ -> Error "cons: two args expected"
+let pr_consq = Native.function1 Native.consp
+
+let pr_stringp = Native.function1 (function
+  | Str _ -> true_value
+  | _ -> false_value
 )
 
-let pr_hd = make_closure 1 (function
-  | [Cons (h, _)] -> h
-  | _ -> Error "hd: cons expected"
-)
-
-let pr_tl = make_closure 1 (function
-  | [Cons (_, t)] -> t
-  | [Nil] -> Nil
-  | _ -> Error "tl: cons or nil expected"
-)
-
-let pr_numberp = make_closure 1 (function
-  | [Int _] -> Bool true
-  | [Float _] -> Bool true
-  | _ -> Bool false
-)
-
-let pr_consq = make_closure 1 (function
-  | [Cons _] -> Bool true
-  | _ -> Bool false
-)
-
-let pr_stringp = make_closure 1 (function
-  | [Str _] -> Bool true
-  | _ -> Bool false
-)
-
-let pr_vectorp = make_closure 1 (function
-  | [Vec _] -> Bool true
-  | _ -> Bool false
+let pr_vectorp = Native.function1 (function
+  | Vec _ -> true_value
+  | _ -> false_value
 )
 
 (** Kernel [vector?] is redefined in [sys.kl] using [absvector?]. The KL sources
     never define [absvector?]; it must be a primitive (same discriminant as
     [absvector] / [@p] tuples). *)
-let pr_absvectorp = make_closure 1 (function
-  | [Vec _] -> Bool true
-  | _ -> Bool false
+let pr_absvectorp = pr_vectorp
+
+let pr_absvector = Native.function1 (function
+  | Int n when n >= 0 -> Vec (Array.make n Nil)
+  | Int _ -> raise (User_error "absvector: non-negative integer expected")
+  | _ -> raise (User_error "absvector: integer expected")
 )
 
-let pr_absvector = make_closure 1 (function
-  | [Int n] when n >= 0 -> Vec (Array.make n Nil)
-  | [Int _] -> Error "absvector: non-negative integer expected"
-  | _ -> Error "absvector: integer expected"
-)
+let pr_str = Native.function1 (fun v -> Str (to_string v))
 
-let pr_str = make_closure 1 (function
-  | [v] -> Str (to_string v)
-  | _ -> Error "str: one argument expected"
-)
+let pr_gt = Native.function2 Native.gt
 
-let pr_gt = make_closure 2 (function
-  | [Int a; Int b] -> Bool (a > b)
-  | [Float a; Float b] -> Bool (a > b)
-  | [Int a; Float b] -> Bool (float_of_int a > b)
-  | [Float a; Int b] -> Bool (a > float_of_int b)
-  | _ -> Error ">: numbers expected"
-)
+let pr_lt = Native.function2 Native.lt
 
-let pr_lt = make_closure 2 (function
-  | [Int a; Int b] -> Bool (a < b)
-  | [Float a; Float b] -> Bool (a < b)
-  | [Int a; Float b] -> Bool (float_of_int a < b)
-  | [Float a; Int b] -> Bool (a < float_of_int b)
-  | _ -> Error "<: numbers expected"
-)
+let pr_lte = Native.function2 Native.lte
 
-let pr_lte = make_closure 2 (function
-  | [Int a; Int b] -> Bool (a <= b)
-  | [Float a; Float b] -> Bool (a <= b)
-  | [Int a; Float b] -> Bool (float_of_int a <= b)
-  | [Float a; Int b] -> Bool (a <= float_of_int b)
-  | _ -> Error "<=: numbers expected"
-)
-
-let pr_gte = make_closure 2 (function
-  | [Int a; Int b] -> Bool (a >= b)
-  | [Float a; Float b] -> Bool (a >= b)
-  | [Int a; Float b] -> Bool (float_of_int a >= b)
-  | [Float a; Int b] -> Bool (a >= float_of_int b)
-  | _ -> Error ">=: numbers expected"
-)
+let pr_gte = Native.function2 Native.gte
 
 let pr_div = make_closure 2 (function
   | [Int a; Int b] ->
@@ -189,48 +126,48 @@ let pr_div = make_closure 2 (function
   | _ -> Error "/: numbers expected"
 )
 
-let pr_cn = make_closure 2 (function
-  | [Str a; Str b] -> Str (a ^ b)
-  | _ -> Error "cn: two strings expected"
+let pr_cn = Native.function2 (fun a b -> match a, b with
+  | Str a, Str b -> Str (a ^ b)
+  | _ -> raise (User_error "cn: two strings expected")
 )
 
-let pr_pos = make_closure 2 (function
-  | [Str s; Int i] ->
-      if i < 0 || i >= String.length s then Error "pos: index out of bounds"
+let pr_pos = Native.function2 (fun s i -> match s, i with
+  | Str s, Int i ->
+      if i < 0 || i >= String.length s then raise (User_error "pos: index out of bounds")
       else Str (String.make 1 s.[i])
-  | _ -> Error "pos: string and integer expected"
+  | _ -> raise (User_error "pos: string and integer expected")
 )
 
-let pr_tlstr = make_closure 1 (function
-  | [Str s] ->
-      if s = "" then Error "tlstr: empty string"
+let pr_tlstr = Native.function1 (function
+  | Str s ->
+      if s = "" then raise (User_error "tlstr: empty string")
       else Str (String.sub s 1 (String.length s - 1))
-  | _ -> Error "tlstr: string expected"
+  | _ -> raise (User_error "tlstr: string expected")
 )
 
-let pr_n_to_string = make_closure 1 (function
-  | [Int n] ->
-      if n < 0 || n > 255 then Error "n->string: byte 0..255 expected"
+let pr_n_to_string = Native.function1 (function
+  | Int n ->
+      if n < 0 || n > 255 then raise (User_error "n->string: byte 0..255 expected")
       else Str (String.make 1 (Char.chr n))
-  | _ -> Error "n->string: integer expected"
+  | _ -> raise (User_error "n->string: integer expected")
 )
 
-let pr_string_to_n = make_closure 1 (function
-  | [Str s] ->
+let pr_string_to_n = Native.function1 (function
+  | Str s ->
       if String.length s <> 1 then
-        Error "string->n: single-character string expected"
+        raise (User_error "string->n: single-character string expected")
       else Int (Char.code s.[0])
-  | _ -> Error "string->n: string expected"
+  | _ -> raise (User_error "string->n: string expected")
 )
 
-let pr_symbolp = make_closure 1 (function
-  | [Sym _] -> Bool true
-  | _ -> Bool false
+let pr_symbolp = Native.function1 (function
+  | Sym _ -> true_value
+  | _ -> false_value
 )
 
-let pr_booleanp = make_closure 1 (function
-  | [Bool _] -> Bool true
-  | _ -> Bool false
+let pr_booleanp = Native.function1 (function
+  | Bool _ -> true_value
+  | _ -> false_value
 )
 
 let pr_open = make_closure 2 (function
@@ -279,6 +216,7 @@ let pr_write_byte = make_closure 2 (function
       if b < 0 || b > 255 then Error "write-byte: byte 0..255 expected"
       else (
         output_byte ch b;
+        if ch == stdout || ch == stderr then flush ch;
         Int b)
   | _ -> Error "write-byte: byte and output stream expected"
 )
@@ -306,34 +244,28 @@ let pr_if = make_closure 3 (function
 )
 
 let pr_and = make_closure 2 (function
-  | [Bool a; Bool b] -> Bool (a && b)
+  | [Bool a; Bool b] -> of_bool (a && b)
   | _ -> Bool false
 )
 
 let pr_or = make_closure 2 (function
-  | [Bool a; Bool b] -> Bool (a || b)
+  | [Bool a; Bool b] -> of_bool (a || b)
   | _ -> Bool false
 )
 
-let pr_address_get = make_closure 2 (function
-  | [Vec v; Int i] ->
-      if i >= 0 && i < Array.length v then v.(i) else Error "address out of bounds"
-  | _ -> Error "<-address: vector and integer expected"
-)
+let pr_address_get = Native.function2 Native.address_get
 
-let pr_address_set = make_closure 3 (function
-  | [Vec v; Int i; x] ->
-      if i >= 0 && i < Array.length v then 
-        (v.(i) <- x; Vec v) 
-      else Error "address out of bounds"
-  | _ -> Error "address->: vector, integer and value expected"
-)
+let pr_address_set = Native.function3 Native.address_set
 
 let pr_apply = make_closure 2 (function
   | [Closure cl; arg] -> cl [arg]
+  | [Native fn; arg] -> fn.invoke [arg]
+  | [Thunk _ as fn; arg] -> Native.apply1 fn arg
   | [Sym name; arg] ->
       (match get_fn name with
        | Some (Closure cl) -> cl [arg]
+        | Some (Native fn) -> fn.invoke [arg]
+        | Some (Thunk _ as fn) -> Native.apply1 fn arg
        | Some v -> v
        | None -> Error ("unbound function: " ^ name))
   | _ -> Error "apply: function and argument expected"
@@ -437,12 +369,12 @@ let make_native_hash () =
     let r = h mod m in
     if r < 0 then r + m else r
   in
-  make_closure 2 (function
-    | [value; Int m] when m > 0 ->
-        let h = Hashtbl.hash value in
+  Native.function2 (fun value modulus -> match modulus with
+    | Int m when m > 0 ->
+        let h = Value.hash value in
         let r = pos_mod h m in
         Int (if r = 0 then 1 else r)
-    | _ -> Error "hash: value and positive modulus expected")
+    | _ -> raise (User_error "hash: value and positive modulus expected"))
 
 let install_native_hash () =
   native_overwrite_quiet "hash" (make_native_hash ())
@@ -452,7 +384,7 @@ let register_hash_fn_metadata () =
   | Some h -> register_fn_metadata "hash" 2 h
   | None -> ()
 
-let initialise () =
+let initialise ?(verbose = true) () =
   set_global "*stinput*" (Stream (In_chan stdin));
   set_global "*stoutput*" (Stream (Out_chan stdout));
   register "intern" pr_intern;
@@ -505,11 +437,12 @@ let initialise () =
   register "error" pr_error;
   register "error-to-string" pr_error_to_string;
   (* Native overwrites for hot paths *)
-  native_overwrite "=" pr_equal;  (* optimized equality *)
-  native_overwrite "+" pr_plus;   (* optimized arithmetic *)
-  native_overwrite "*" pr_mult;
-  native_overwrite "-" pr_minus;
+  let overwrite = if verbose then native_overwrite else native_overwrite_quiet in
+  overwrite "=" pr_equal;  (* optimized equality *)
+  overwrite "+" pr_plus;
+  overwrite "*" pr_mult;
+  overwrite "-" pr_minus;
   (* add more for apply, cons etc. *)
-  print_endline "Primitives initialised."
+  if verbose then print_endline "Primitives initialised."
 
 (* Called from main.ml and tests. No top-level execution to avoid duplicate prints. *)

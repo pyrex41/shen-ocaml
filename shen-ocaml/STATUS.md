@@ -1,71 +1,86 @@
-# Shen-OCaml Status (2026-04-06)
+# Shen-OCaml status — 2026-10-21
 
-## What Works
+## Delivered locally
 
-- **Kernel boot**: All 24 .kl files from ShenOSKernel-43.1 load and evaluate successfully
-- **`shen.initialise`** runs without errors
-- **Post-boot metadata**: All 45 registered primitives plus native `hash` have arity + `shen.lambda-form` registered in the property vector
-- **REPL**: Real Shen REPL with balanced parenthesis input, routed through kernel `eval`
-- **Verified expressions** (via kernel eval path, not just eval-kl):
-  - `(+ 1 1)` → `2`
-  - `(value *version*)` → `"43.1"`
-  - `(cons 1 (cons 2 ()))` → `(1 2)`
-  - `(hd (cons 1 2))` → `1`
-  - `(let X 5 (+ X 1))` → `6`
-  - `(tc +)` → `true` (type checker activates)
-  - `(defun f (X) (* X 2))` then `(f 3)` → `6`
-  - `(trap-error (simple-error "boom") (lambda E (error-to-string E)))` → `"boom"`
-- **46 KL primitives total**: 45 in `Primitives.initialise` plus native `hash` installed before kernel boot (porting-guide count)
-- **Interpreter**: Full tree-walking eval with lexical environments, all KL special forms
-- **Partial application**: Under-application returns new closure, over-application chains
-- **Native overwrites**: `=`, `+`, `*`, `-` have optimized hot-path implementations
-- **Parser**: Full s-expression parser for .kl files
-- **AOT data embedding**: All 24 kernel files can be pre-parsed to OCaml AST literals
-- **Shen backpressure**: specs/core.shen (14 types) → shengen-ocaml → guard_types.{ml,mli} → library `shen_guard_types`, witness `Runtime.Guard_types_link`, depended on by `Interp.Boot` (Gate 2)
-- **Build**: `dune build`, `dune test`, all 4 backpressure gates pass
-- **Nix**: Reproducible dev environment via flake.nix (OCaml 5.3.0, dune 3.20.2)
+- Real KL-to-native-OCaml backend; the full 23-file 43.1 kernel is compiled.
+- Resolved lexical IR, free-variable analysis, and compiled-closure dynamic tier.
+- Default CLI uses the native kernel and dynamic compiler. Legacy CLI retained.
+- Explicit compatible/sealed call binding; tested cross-backend redefinition.
+- Stable mutable function cells and specialized arity 0–8 dispatch.
+- Closures, currying, overapplication, errors, effect order and deep tail calls.
+- Shared primitive fixes: boolean interning, callable/symbol discrimination,
+  mixed-numeric equality/hash consistency, and interactive output flushing.
+- Cached boolean results, direct primitive entries, allocation-free vector-equality
+  traversal, scalar-hash fast paths, and direct syntactic exception handlers.
+- Guarded unboxed integer workers for compatible and sealed recursive numeric subsets;
+  compatible guards preserve self/primitive redefinition and old references.
+- Lean zero-arity thunks (16-byte wrapper vs 96-byte previous representation),
+  with fresh invocation frames and capture-free closure fast paths.
+- Restricted typed/untyped `.shen` function-module compilation to native `.cmxs`, with
+  fresh-process loading, compatible/sealed modes, source metadata and late-bound
+  saved `fn` references. Compilation does not run user function bodies.
+- Fork-isolated built-in typechecking and native signature predicates; typed loading
+  does not use `eval-kl`, `declare` or ambient type hooks and rejects foreign types.
+- Checked default-only application scoreboard, reproducibly randomized jobs and
+  separate CPU/allocation sampling. Tagged-value experiment remains isolated.
+- Explicit post-expansion KL promotion with stale-group checks and no metadata or
+  source-effect replay, exposed by `eval-promoted`; automatic promotion is not enabled.
+- Compact dynamic frames/read-only captures and direct hot string primitive entries.
 
-## What Partially Works
+## Verified on this machine (macOS ARM64, OCaml 5.3.0)
 
-- **`(tc +)` and typed define**: Type checker activates but may be slow on complex types
-- **AOT codegen**: Emits KL as OCaml data literals; not yet compiling to native function bodies
-## What Doesn't Work Yet
+- `nix develop --command dune runtest`: passing enabled regression tests.
+- Current 43.1 canonical suite, native kernel + dynamic compiler: **154 passed, 0 failed**.
+- Same canonical fixture suite on freshly built upstream Scheme: **154/0**.
+- Shared KL corpus: **33 checks** pass in dynamic, native-compatible and sealed
+  modes, and on upstream Scheme.
+- One-million-deep self/mutual tail-call tests; CLI and literal/hash edge tests.
+- Arity 5–8: partial splits, overapplication, generic/legacy replacement, ordered
+  effects and deep recursion; cached boolean/call allocation assertions.
+- Integer workers: 36 mixed numeric cases, float fallback, existing overflow
+  behavior, primitive shadowing and effect rejection; no per-iteration allocation.
+- Native user-module tests pass with `eval-kl` disabled during compilation/loading,
+  including fresh-host loading, `ps`/`userdefs`, saved/partial `fn` redefinition and
+  fail-closed unsupported source. Both compatible and sealed CLI paths pass.
+- Typed staging/fresh-host loading and rejection checks pass against the pinned
+  Scheme reference. Typed staging itself uses compiler-owned `eval-kl` in its child.
+- Vendored 23 kernel files byte-for-byte match the checksum-verified upstream
+  43.1 tarball used by the Scheme reference.
 
-- **Code AOT**: No compilation of KL to OCaml function bodies
-- **IR tail annotations**: `ir.ml` annotates tail positions but no backend consumes them
-- **Symbol interning in values**: `Sym of string` uses string equality, not interned IDs
-- **Native vs shen-cl `overwrite.lsp`**: Not yet compared (reference tree not in this workspace)
-- **Kernel test suite**: Not yet run (`kerneltests.shen` from ShenOSKernel-43.1)
-## Code Sizes
+Reference: `tizoc/shen-scheme` master at
+`8d261518db17fbfec32d1b268b40ed216b925c74`, built with Chez 10.3.0.
+Kernel archive SHA-256:
+`900eedef44f440af78f9395ed06e689ce1604546fc309f5bc7c8bc84cc651920`.
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| src/runtime/primitives.ml | ~485 | KL primitives + native hash + overwrites + metadata |
-| src/codegen/ocaml_gen.ml | 235 | KL→OCaml literal emitter + name mangling |
-| src/interp/eval.ml | 213 | Tree-walking interpreter |
-| src/kl/parser.ml | 158 | S-expression parser |
-| src/interp/boot.ml | 105 | Kernel loader and bootstrapper |
-| bin/main.ml | 90 | CLI/REPL |
-| src/runtime/value.ml | 60 | Runtime value type |
-| src/kl/ir.ml | 58 | IR with tail-position annotations |
-| src/runtime/env.ml | 53 | Dual namespace environment |
-| src/runtime/symbol.ml | 53 | Symbol interning |
-| src/kl/ast.ml | 36 | KL AST type definition |
+These are concrete test results, not a claim of complete language equivalence.
+The long suite remains opt-in, not silently included in ordinary `dune runtest`.
+The vendored suite was refreshed with 20 previously missing 43.1 tests; its
+harness differs only to make failure reporting noninteractive.
 
-## Next Steps
+Seven-run measurements show substantial improvements over the legacy walker.
+A narrow sealed integer loop now beats the measured Chez dynamic case, but most
+workloads and especially the dynamic tier remain slower. Latest results/boundaries:
+[validation-vigor-2026-10-21.md](docs/validation-vigor-2026-10-21.md).
+The 2026-10-21 five-run default application CPU medians were competitive for those typed
+loads but OCaml remains 5.4× slower on Prolog, 3.1× on dictionaries and 19× on the
+higher-order list pipeline. See [application validation](docs/validation-applications-2026-10-21.md).
 
-1. Run kernel test suite and document pass/fail
-2. Typed define, Prolog, pattern matching smoke tests (Task 6)
-3. Code AOT: compile KL to OCaml function bodies
-4. Integrate interned symbol IDs into `Sym` variant for O(1) equality
-5. Compare native overwrites to shen-cl `overwrite.lsp` when that tree is available
+The [2026-10-22 wave](docs/validation-promotion-2026-10-22.md) adds controlled native
+ceilings: explicit promotion improves list CPU ~2.13× and allocation ~39%, with
+modest Prolog gains and no dictionary throughput win. The fresh default scorecard
+still trails Chez ~6×/3.3×/20× on Prolog/dictionary/lists; no general superiority or
+historical before/after speedup is claimed. See the [next-work plan](plans/application-performance.md).
 
-## Verification
+## Outstanding
 
-```bash
-cd shen-ocaml
-nix develop --command bash -c 'dune build && dune test'
-make all                    # runs all 4 backpressure gates
-./bin/shen-check.sh         # Shen tc+ on specs
-printf "(+ 1 1)\n(value *version*)\n" | nix develop --command bash -c './_build/default/bin/main.exe'
-```
+- General macro/package/datatype-aware native source compilation, automatic promotion,
+  ABI-aware compilation caching and standalone applications.
+- Remaining primitive adapters, larger-arity calls and continuation allocation.
+- Runtime interned symbols and improved number/value representation.
+- Arbitrary-precision integers and audited overflow/numerical edge behavior.
+- Nested `defun` expressions in executable backends (explicit compile error).
+- Broad upstream port-specific tests (native modules, Unicode/argv and embedding).
+- Broader repeated application qualification against Chez; Linux qualification.
+- Installable runtime packaging (the root Nix default still provides a toolchain).
+
+The old status is retained in `docs/legacy-status-2026-04-06.md`.

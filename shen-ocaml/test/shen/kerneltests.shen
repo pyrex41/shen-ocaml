@@ -1,5 +1,95 @@
 (maxinferences 1e7)
 
+(report "S43.1 public functions"
+
+  (map (fn arity) [char-stream? read-unit-string write-string])
+  [1 1 2]
+
+  (map (/. F (element? F (external shen)))
+       [char-stream? read-unit-string write-string occurs? factorise?
+        optimise? hush? system-S? hush userdefs tracked included spy? step? ctxt sqts])
+  [true true true true true true true true true true true true true true true true]
+
+  (map (/. F (not (empty? (assoc F (value shen.*sigf*)))))
+       [char-stream? read-unit-string write-string])
+  [true true true]
+
+  (boolean? ((fn char-stream?) (stinput)))
+  true
+
+  (let Before (value *absolute*)
+       Added (absolute "kernel-test-absolute")
+       Removed (unabsolute "kernel-test-absolute")
+    [(element? "kernel-test-absolute" Added) (= Before Removed)])
+  [true true])
+
+(report "datatype side-condition keywords"
+
+  (compile (/. Tokens (shen.<side> Tokens)) [ctxt (protect Context)])
+  [ctxt (protect Context)]
+
+  (compile (/. Tokens (shen.<side> Tokens)) [sqts (protect Sequents)])
+  [sqts (protect Sequents)])
+
+(report "context macro list tails"
+
+  (macroexpand [shen.@c (cons a (cons (intern "bar!") (cons (protect Tail) [])))])
+  [cons a (protect Tail)]
+
+  (macroexpand [shen.@ch (cons a (cons (intern "bar!") (cons (protect Tail) [])))])
+  [cons a (protect Tail)]
+
+  (macroexpand [shen.@ch [+ (cons a (cons (intern "bar!") (cons (protect Tail) [])))]])
+  [+ [cons a (protect Tail)]]
+
+  (macroexpand [shen.@c [a b]])
+  [cons a [cons b []]])
+
+(report "lambda table updates"
+
+  (update-lambda-table append 2)
+  append
+
+  (let F append
+       Lambda (fn F)
+    (Lambda [1] [2]))
+  [1 2]
+
+  (put version shen.lambda-form stale)
+  stale
+
+  (update-lambda-table version 0)
+  version
+
+  (trap-error
+    (get version shen.lambda-form)
+    (/. X undefined))
+  undefined
+
+  (do (put lambda-table-missing shen.lambda-form stale)
+      (update-lambda-table lambda-table-missing -1)
+      (let Result (trap-error
+                    (let F lambda-table-missing
+                      (fn F))
+                    (/. X undefined))
+           Clear (unput lambda-table-missing arity)
+        Result))
+  undefined)
+
+(report "type declaration variancy"
+
+  (prolog? (shen.variancy-signature (receive version) (receive string) Signature)
+           (return Signature))
+  [--> string]
+
+  (prolog? (shen.variancy-signature (receive version) (receive string)
+                                     (receive [--> number])))
+  false
+
+  (prolog? (shen.variancy-signature (receive append) (receive [number --> number]) Signature)
+           (return Signature))
+  [number --> number])
+
 (report "cartesian product"
 
     (load "cartprod.shen") loaded

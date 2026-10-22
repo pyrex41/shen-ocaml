@@ -1,0 +1,10 @@
+(rule
+ (target kernel.ml)
+ (deps (source_tree %{workspace_root}/kernel))
+ (action
+  (run %{exe:../tools/gen_native_kernel.exe} %{workspace_root}/kernel %{target})))
+
+(library
+ (name shen_native_kernel)
+ (modules kernel)
+ (libraries shen))

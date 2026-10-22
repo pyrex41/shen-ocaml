@@ -21,3 +21,6 @@ _opam/
 
 # OS / editor cruft
 .DS_Store
+
+# Python benchmark helpers
+__pycache__/

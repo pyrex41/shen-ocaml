@@ -7,3 +7,13 @@
  (name gen_all_kernel_forms)
  (modules gen_all_kernel_forms)
  (libraries shen))
+
+(executable
+ (name compile_native)
+ (modules compile_native)
+ (libraries shen))
+
+(executable
+ (name gen_native_kernel)
+ (modules gen_native_kernel)
+ (libraries shen))

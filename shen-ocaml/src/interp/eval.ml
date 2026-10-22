@@ -59,7 +59,10 @@ let rec eval (env : local_env) (expr : kl_expr) : value =
           if s = "true" then Bool true
           else if s = "false" then Bool false
           else Sym s)
-  | KLCons (a, b) -> Cons (eval env a, eval env b)
+  | KLCons (a, b) ->
+      let a = eval env a in
+      let b = eval env b in
+      Cons (a, b)
   | KLVec arr -> Vec (Array.map (eval env) arr)
   | KLIf (c, t, e) ->
       if is_true (eval env c) then eval env t else eval env e
@@ -97,16 +100,17 @@ and eval_app env f args =
   | KLSym "if", _ -> Error "if: three arguments expected"
   | KLSym "cond", clauses -> eval_cond env clauses
   | KLSym "freeze", [ e ] ->
-      Closure (function
-        | [] -> eval env e
-        | _ -> Error "freeze: invoked with arguments")
+      Runtime.Native.function0 (fun () -> eval env e)
   | KLSym "freeze", _ -> Error "freeze: one argument expected"
   | KLSym "thaw", [ e ] -> (
       match eval env e with
       | Closure cl -> cl []
+      | Native fn -> fn.invoke []
+      | Thunk f -> f ()
       | _ -> Error "thaw: expected a frozen thunk")
   | KLSym "thaw", _ -> Error "thaw: one argument expected"
   | KLSym "trap-error", [ body_e; handler_e ] -> (
+      let handler = eval env handler_e in
       let r =
         try eval env body_e
         with
@@ -116,8 +120,10 @@ and eval_app env f args =
       in
       match r with
       | Error _ as err -> (
-          match eval env handler_e with
+          match handler with
           | Closure cl -> cl [ err ]
+          | Native fn -> fn.invoke [ err ]
+          | Thunk _ as fn -> Runtime.Native.apply1 fn err
           | _ -> Error "trap-error: handler must be a function")
       | v -> v)
   | KLSym "trap-error", _ -> Error "trap-error: two arguments expected"
@@ -155,7 +161,9 @@ and eval_or env = function
 
 and make_user_closure (env : local_env) (param_names : string list) (body : kl_expr)
     : value =
-  Closure (fun args -> apply_user env param_names body args)
+  match param_names with
+  | [] -> Runtime.Native.function0 (fun () -> eval env body)
+  | _ -> Closure (fun args -> apply_user env param_names body args)
 
 and apply_user env param_names body args =
   let rec step cur_env ps avs =
@@ -171,11 +179,15 @@ and apply_value fval argvals =
   let apply_named name =
     match get_fn name with
     | Some (Closure cl) -> cl argvals
+    | Some (Native fn) -> fn.invoke argvals
+    | Some (Thunk _ as fn) -> Runtime.Native.apply fn argvals
     | Some _ -> Error ("not a function: " ^ name)
     | None -> Error ("unbound function: " ^ name)
   in
   match fval with
   | Closure cl -> cl argvals
+  | Native fn -> fn.invoke argvals
+  | Thunk _ as fn -> Runtime.Native.apply fn argvals
   | Sym name -> apply_named name
   | Str name -> apply_named name
   | _ -> Error ("not applicable: " ^ to_string fval)
@@ -190,7 +202,7 @@ let rec value_to_kl_atom v =
   | Nil -> KLNil
   | Vec a -> KLVec (Array.map value_to_kl_atom a)
   | Cons _ -> value_to_kl_expr v
-  | Closure _ | Stream _ | Error _ ->
+  | Closure _ | Thunk _ | Native _ | Stream _ | Error _ ->
       raise (Eval_error "eval-kl: invalid value in kl expression")
 
 and value_to_kl_expr v =

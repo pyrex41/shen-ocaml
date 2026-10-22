@@ -2,4 +2,23 @@
  (name main)
  (public_name shen-ocaml)
  (modules main)
- (libraries shen cmdliner))
+ (libraries shen_cli)
+ (link_flags -linkall))
+
+(executable
+ (name legacy_main)
+ (public_name shen-ocaml-legacy)
+ (modules legacy_main)
+ (libraries shen))
+
+(library
+ (name shen_cli)
+ (modules native_cli native_build native_promote)
+ (libraries shen shen_native_kernel dynlink))
+
+(executable
+ (name native_main)
+ (public_name shen-ocaml-native)
+ (modules native_main)
+ (libraries shen_cli)
+ (link_flags -linkall))

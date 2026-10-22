@@ -52,12 +52,162 @@
  (modules test_types_kl_aot)
  (libraries shen_aot_kernel))
 
-; Canonical suite remains opt-in: kerneltests.shen loops in the OCaml runtime.
+(rule
+ (target native_compatible.ml)
+ (deps fixtures/native.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --compatible %{dep:fixtures/native.kl} %{target})))
+
+(rule
+ (target native_sealed.ml)
+ (deps fixtures/native.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --sealed %{dep:fixtures/native.kl} %{target})))
+
+(test
+ (name test_native)
+ (modules test_native native_compatible native_sealed)
+ (deps fixtures/native.kl)
+ (libraries shen))
+
+(test
+ (name test_native_kernel)
+ (modules test_native_kernel)
+ (deps fixtures/native_refs.shen)
+ (libraries shen shen_native_kernel))
+
+(test
+ (name test_cli)
+ (modules test_cli)
+ (libraries unix str)
+ (action (run %{test} %{exe:../bin/main.exe})))
+
+(executable
+ (name generate_native_edges)
+ (modules generate_native_edges)
+ (libraries shen))
+
+(rule
+ (target native_edges.ml)
+ (action (run %{exe:generate_native_edges.exe} %{target})))
+
+(test
+ (name test_native_edges)
+ (modules test_native_edges native_edges)
+ (libraries shen))
+
+(executable
+ (name test_native_user_slice)
+ (modules test_native_user_slice)
+ (libraries shen_cli shen shen_native_kernel unix dynlink)
+ (link_flags -linkall))
+
+(executable
+ (name test_native_typed_staging)
+ (modules test_native_typed_staging)
+ (libraries shen_cli shen shen_native_kernel unix dynlink)
+ (link_flags -linkall))
+
+(executable
+ (name test_native_promote)
+ (modules test_native_promote)
+ (libraries shen_cli shen shen_native_kernel unix dynlink)
+ (link_flags -linkall))
+
+(rule
+ (target native_arity58_compatible.ml)
+ (deps fixtures/native_arity58.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --compatible
+   %{dep:fixtures/native_arity58.kl} %{target})))
+
+(rule
+ (target native_arity58_sealed.ml)
+ (deps fixtures/native_arity58.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --sealed
+   %{dep:fixtures/native_arity58.kl} %{target})))
+
+(test
+ (name test_native_arity58)
+ (modules test_native_arity58 native_arity58_compatible native_arity58_sealed)
+ (deps fixtures/native_arity58.kl)
+ (libraries shen))
+
+(rule
+ (target numeric_compatible.ml)
+ (deps fixtures/numeric_workers.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --compatible %{dep:fixtures/numeric_workers.kl} %{target})))
+
+(rule
+ (target numeric_sealed.ml)
+ (deps fixtures/numeric_workers.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --sealed %{dep:fixtures/numeric_workers.kl} %{target})))
+
+(test
+ (name test_numeric_workers)
+ (modules test_numeric_workers numeric_compatible numeric_sealed)
+ (libraries shen))
+
+(rule
+ (target thunk_lean_compatible.ml)
+ (deps fixtures/thunk_lean.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --compatible %{dep:fixtures/thunk_lean.kl} %{target})))
+
+(rule
+ (target thunk_lean_sealed.ml)
+ (deps fixtures/thunk_lean.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --sealed %{dep:fixtures/thunk_lean.kl} %{target})))
+
+(test
+ (name test_thunk_lean)
+ (modules test_thunk_lean thunk_lean_compatible thunk_lean_sealed)
+ (deps fixtures/thunk_lean.kl)
+ (libraries shen))
+
+(test
+ (name test_dynamic_frames)
+ (modules test_dynamic_frames)
+ (libraries shen))
+
+(test
+ (name test_string_primitive_entries)
+ (modules test_string_primitive_entries)
+ (libraries shen))
+
+(rule
+ (target guarded_numeric_entry.ml)
+ (deps fixtures/guarded_numeric_entry.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --compatible %{dep:fixtures/guarded_numeric_entry.kl} %{target})))
+
+(rule
+ (target guarded_numeric_duplicate.ml)
+ (deps fixtures/guarded_numeric_duplicate.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --compatible %{dep:fixtures/guarded_numeric_duplicate.kl} %{target})))
+
+(rule
+ (target guarded_numeric_primitive.ml)
+ (deps fixtures/guarded_numeric_primitive.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --compatible %{dep:fixtures/guarded_numeric_primitive.kl} %{target})))
+
+(test
+ (name test_guarded_numeric_entry)
+ (modules test_guarded_numeric_entry guarded_numeric_entry guarded_numeric_duplicate guarded_numeric_primitive)
+ (libraries shen))
+
+; Opt-in, bounded by scripts/check_kernel_suite.py; never a silent full-suite pass.
 (test
  (name test_kernel_shen_suite)
  (modules test_kernel_shen_suite)
- (libraries shen)
- (enabled_if false)
+ (libraries shen shen_native_kernel)
+ (enabled_if (= %{env:SHEN_FULL_KERNEL_TESTS=false} true))
  (deps
   (source_tree %{workspace_root}/kernel)
   (source_tree %{workspace_root}/test/shen))

@@ -1,0 +1,43 @@
+(executable
+ (name baseline)
+ (modules baseline)
+ (libraries shen unix))
+
+(rule
+ (target workloads_compatible.ml)
+ (deps workloads.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --compatible %{dep:workloads.kl} %{target})))
+
+(rule
+ (target workloads_sealed.ml)
+ (deps workloads.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --sealed %{dep:workloads.kl} %{target})))
+
+(executable
+ (name compare_native)
+ (modules compare_native workloads_compatible workloads_sealed)
+ (libraries shen unix))
+
+(executable
+ (name profile_kernel)
+ (modules profile_kernel)
+ (libraries shen shen_native_kernel unix str))
+
+(rule
+ (target wide_native.ml)
+ (deps wide_calls.kl)
+ (action
+  (run %{exe:../tools/compile_native.exe} --compatible %{dep:wide_calls.kl} %{target})))
+
+(executable
+ (name compare_wide)
+ (modules compare_wide wide_native)
+ (libraries shen unix))
+
+(executable
+ (name application_native)
+ (modules application_native)
+ (libraries shen_cli shen shen_native_kernel unix)
+ (link_flags -linkall))

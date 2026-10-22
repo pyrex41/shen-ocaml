@@ -1,0 +1,12 @@
+(defun thunk-lean.zero () 42)
+(defun thunk-lean.factory () (lambda X (lambda Y (+ X Y))))
+(defun thunk-lean.capture (X) (freeze (lambda Y (+ X Y))))
+(defun thunk-lean.nested (X) (freeze (let Y (+ X 1) (freeze (+ X Y)))))
+(defun thunk-lean.fail () (simple-error "thunk-lean failure"))
+(defun thunk-lean.tail (N)
+  (if (= N 0) 42 (thaw (freeze (thunk-lean.tail (- N 1))))))
+(defun thunk-lean.factory-tail ()
+  (lambda N (if (= N 0) 42 (thunk-lean.factory-tail (- N 1)))))
+(defun thunk-lean.trap ()
+  (trap-error (thaw (freeze (simple-error "trapped"))) (lambda E (error-to-string E))))
+true

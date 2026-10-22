@@ -1,0 +1,8 @@
+(defun bench.wide5 (N A B C D)
+  (if (= N 0) D (bench.wide5 (- N 1) A B C D)))
+(defun bench.wide6 (N A B C D E)
+  (if (= N 0) E (bench.wide6 (- N 1) A B C D E)))
+(defun bench.wide7 (N A B C D E F)
+  (if (= N 0) F (bench.wide7 (- N 1) A B C D E F)))
+(defun bench.wide8 (N A B C D E F G)
+  (if (= N 0) G (bench.wide8 (- N 1) A B C D E F G)))

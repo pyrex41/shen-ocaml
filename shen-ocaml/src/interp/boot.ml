@@ -41,6 +41,7 @@ let kernel_files =
 let set_port_metadata () =
   set_global "*language*" (Str "OCaml");
   set_global "*implementation*" (Str "shen-ocaml");
+  set_global "*release*" (Str Sys.ocaml_version);
   set_global "*port*" (Str "0.1.0-ocaml");
   set_global "*porters*" (Str "Shen-OCaml port")
 
@@ -65,27 +66,50 @@ let load_kl_file path =
       | _ -> ())
     forms
 
-let boot_kernel ~kernel_dir =
+let boot_with ~load =
   set_port_metadata ();
-  (* Set *home-directory* to cwd so (load ...) resolves relative paths. *)
-  let cwd = Sys.getcwd () in
-  let home = if cwd = "" then "" else cwd ^ "/" in
-  set_global "*home-directory*" (Str home);
-  List.iter
-    (fun base ->
-      let path = Filename.concat kernel_dir base in
-      if not (Sys.file_exists path) then
-        raise (Boot_error ("kernel file not found: " ^ path));
-      load_kl_file path)
-    kernel_files;
+  (* An empty prefix follows the OS cwd for relative files and also permits
+     absolute paths, matching the Scheme port. Do not freeze cwd into a prefix
+     that would corrupt an absolute filename or override an embedding host. *)
+  (match get_global "*home-directory*" with
+  | None -> set_global "*home-directory*" (Str "")
+  | Some _ -> ());
+  load ();
   (* Native [hash] before [shen.initialise] so *property-vector* buckets stay consistent. *)
   Runtime.Primitives.install_native_hash ();
+  (* The kernel's portable [symbol?] inspects [str]. Native callable printing is
+     deliberately opaque, not a symbol spelling; retain the host predicate, as
+     the Scheme reference does, so closures are not classified as symbols. *)
+  Runtime.Primitives.native_overwrite_quiet "symbol?" Runtime.Primitives.pr_symbolp;
   let init_expr = KLApp (KLSym "shen.initialise", []) in
   (match eval_kl init_expr with
   | Error msg -> raise (Boot_error ("shen.initialise: " ^ msg))
   | _ -> ());
   Runtime.Primitives.register_hash_fn_metadata ();
   Runtime.Primitives.register_all_metadata ()
+
+let boot_kernel ~kernel_dir =
+  boot_with ~load:(fun () ->
+    List.iter
+      (fun base ->
+        let path = Filename.concat kernel_dir base in
+        if not (Sys.file_exists path) then
+          raise (Boot_error ("kernel file not found: " ^ path));
+        load_kl_file path)
+      kernel_files)
+
+let boot_native ~install =
+  Compiled.install ();
+  try
+    boot_with ~load:(fun () -> ignore (install ()));
+    List.iter (fun (source, baseline) -> match get_global source with
+      | Some value -> set_global baseline value
+      | None -> ()) [
+      "*macros*", "shen-ocaml.*native-macro-baseline*";
+      "shen.*source-form-handlers*", "shen-ocaml.*native-source-form-baseline*";
+    ]
+  with
+  | User_error message -> raise (Boot_error ("native kernel: " ^ message))
 
 let find_kernel_dir () =
   let ok d = Sys.file_exists (Filename.concat d "core.kl") in

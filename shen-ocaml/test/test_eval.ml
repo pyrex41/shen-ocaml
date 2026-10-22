@@ -32,7 +32,7 @@ let run () =
   (* Primitives use uniform partial application: bare (set) is a closure, not an arity error. *)
   assert (
     match eval_one "(set)" with
-    | Closure _ -> true
+    | Closure _ | Native _ -> true
     | _ -> false);
   assert (eval_one "(cond (false 1) (true 2))" = Int 2);
   assert (eval_one "(if false 1 2)" = Int 2);

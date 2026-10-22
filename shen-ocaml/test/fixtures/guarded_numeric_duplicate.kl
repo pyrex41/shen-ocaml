@@ -1,0 +1,4 @@
+(defun guarded.duplicate (N A)
+  (if (= N 0) A (guarded.duplicate (- N 1) (+ A N))))
+(defun guarded.duplicate (N A)
+  (if (= N 0) A (guarded.duplicate (- N 1) (+ A 100))))

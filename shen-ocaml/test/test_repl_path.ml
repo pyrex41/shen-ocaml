@@ -52,14 +52,13 @@ let () =
   | v ->
       failwith
         ("kernel eval (cons 1 ()): expected cons with hd 1, got " ^ to_string v));
-  (* Current port equality contract: mixed numeric and structural keys remain
-     distinct, equal keys replace in place, and signed zero stays equal. *)
+  (* Numeric equality must agree with dictionary hashing, including mixed
+     representations, structural keys and signed zero. *)
   (match
      eval_via_kernel
-       {|(let D (shen.dict 10) (do (shen.dict-> D 42 "int") (cons (shen.dict-count D) (cons (shen.<-dict D 42) (cons (trap-error (shen.<-dict D 42.0) (lambda E (error-to-string E))) ())))))|}
+        {|(let D (shen.dict 10) (do (shen.dict-> D 42 "int") (cons (shen.dict-count D) (cons (shen.<-dict D 42) (cons (shen.<-dict D 42.0) ())))))|}
    with
-  | Cons (Int 1, Cons (Str "int", Cons (Str msg, Nil)))
-    when String.length msg > 0 -> ()
+   | Cons (Int 1, Cons (Str "int", Cons (Str "int", Nil))) -> ()
   | v -> failwith ("mixed numeric dictionary key regression: " ^ to_string v));
   (match
      eval_via_kernel

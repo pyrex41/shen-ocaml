@@ -1,0 +1,11 @@
+(define oracle-native-ref X -> (+ X 1))
+(set oracle-native-saved (let Name oracle-native-ref (fn Name)))
+(define oracle-native-ref X -> (+ X 100))
+(if (= ((value oracle-native-saved) 1) 101)
+    true (simple-error "saved fn did not observe redefinition"))
+
+(define oracle-native-add X Y -> (+ X Y))
+(set oracle-native-partial (let Name oracle-native-add F (fn Name) (F 1)))
+(define oracle-native-add X Y -> 99)
+(if (= ((value oracle-native-partial) 2) 99)
+    true (simple-error "partially applied fn did not observe redefinition"))

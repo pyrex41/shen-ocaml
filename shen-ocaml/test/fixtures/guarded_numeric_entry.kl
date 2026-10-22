@@ -1,0 +1,9 @@
+(defun guarded.sum (N A)
+  (if (= N 0) A (guarded.sum (- N 1) (+ A N))))
+(defun guarded.all (N A)
+  (if (and (<= N 0) (or (> N 0) (>= N 0)))
+      (if (< A 0) (- 0 A) A)
+      (guarded.all (- N 1) (* (+ A 1) 2))))
+(defun guarded.effect (N A)
+  (if (= N 0) A
+      (do (set guarded.observed N) (guarded.effect (- N 1) (+ A N)))))
